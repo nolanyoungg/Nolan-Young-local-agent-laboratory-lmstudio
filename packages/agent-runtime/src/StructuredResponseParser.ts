@@ -15,23 +15,6 @@ export type AgentCompleteTurn<TFinal extends Readonly<Record<string, unknown>>> 
 export type AgentTurn<TFinal extends Readonly<Record<string, unknown>>> =
   AgentToolCallTurn | AgentCompleteTurn<TFinal>;
 
-/**
- * Deliberately small model-facing envelope.  Some local constrained decoders
- * struggle to compile the full protocol union (one branch per authorized
- * tool).  The JSON payload is decoded and validated against the full strict
- * protocol before it is allowed to reach the tool registry.
- */
-export const ModelWireTurnSchema = z
-  .object({
-    kind: z.enum(["tool_call", "complete"]),
-    // Keep the server grammar as simple as possible. The decoded protocol is
-    // bounded separately by its strict local schemas and the model max tokens.
-    payload: z.string(),
-  })
-  .strict();
-
-export type ModelWireTurn = z.infer<typeof ModelWireTurnSchema>;
-
 const ToolCallTurnSchema = z
   .object({
     kind: z.literal("tool_call"),
@@ -50,6 +33,14 @@ export interface StructuredToolSchema {
   readonly inputSchema: z.ZodType<unknown>;
 }
 
+export interface ModelParseContext {
+  readonly rawContent?: string;
+  readonly harmonyCallId?: string;
+}
+
+const HARMONY_TOOL_CALL =
+  /<\|channel\|>commentary\s+to=tool_call_([a-z][a-z0-9_]{1,63})\s+<\|constrain\|>json<\|message\|>(\{[\s\S]*\})$/u;
+
 function toolCallSchema(tool: StructuredToolSchema): z.AnyZodObject {
   return z
     .object({
@@ -62,7 +53,12 @@ function toolCallSchema(tool: StructuredToolSchema): z.AnyZodObject {
 }
 
 export class StructuredResponseParser<TFinal extends Readonly<Record<string, unknown>>> {
-  public readonly schema: z.ZodType<ModelWireTurn> = ModelWireTurnSchema;
+  /**
+   * Agent turns are generated as ordinary JSON, then strictly validated below.
+   * This intentionally avoids LM Studio's constrained grammar for a dynamic
+   * tool union while preserving validation before any tool execution.
+   */
+  public readonly schema: z.ZodType<unknown> = z.unknown();
   private readonly validationSchema: z.ZodType<AgentTurn<TFinal>>;
 
   public constructor(finalSchema: z.AnyZodObject, tools: readonly StructuredToolSchema[] = []) {
@@ -82,38 +78,35 @@ export class StructuredResponseParser<TFinal extends Readonly<Record<string, unk
     >;
   }
 
-  public parse(value: unknown): AgentTurn<TFinal> {
-    // Preserve direct validation for internal callers and backwards-compatible
-    // deterministic test scripts. Live model responses use the wire envelope.
-    const direct = this.validationSchema.safeParse(value);
-    if (direct.success) return direct.data;
+  public parse(value: unknown, context: ModelParseContext = {}): AgentTurn<TFinal> {
+    const result = this.validationSchema.safeParse(value);
+    if (result.success) return result.data;
 
-    const wire = this.schema.safeParse(value);
-    if (!wire.success) {
-      return this.invalid(wire.error.issues);
+    const harmony = this.parseHarmonyToolCall(context);
+    if (harmony !== undefined) {
+      const harmonyResult = this.validationSchema.safeParse(harmony);
+      if (harmonyResult.success) return harmonyResult.data;
+      return this.invalid(harmonyResult.error.issues);
     }
-    let payload: unknown;
-    try {
-      payload = JSON.parse(wire.data.payload) as unknown;
-    } catch {
-      throw new AgentRuntimeError("INVALID_MODEL_RESPONSE", "Model wire payload was not JSON", {
-        issues: [{ path: "payload", message: "Expected a JSON object encoded as a string." }],
-      });
-    }
-    if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
-      throw new AgentRuntimeError(
-        "INVALID_MODEL_RESPONSE",
-        "Model wire payload was not an object",
-        {
-          issues: [{ path: "payload", message: "Expected a JSON object encoded as a string." }],
-        },
-      );
-    }
-    const result = this.validationSchema.safeParse({ kind: wire.data.kind, ...payload });
     if (!result.success) {
       return this.invalid(result.error.issues);
     }
     return result.data;
+  }
+
+  private parseHarmonyToolCall(context: ModelParseContext): AgentToolCallTurn | undefined {
+    if (context.rawContent === undefined || context.harmonyCallId === undefined) return undefined;
+    const match = HARMONY_TOOL_CALL.exec(context.rawContent.trim());
+    if (match === null) return undefined;
+    const tool = match[1];
+    const inputText = match[2];
+    if (tool === undefined || inputText === undefined) return undefined;
+    try {
+      const input = JSON.parse(inputText) as unknown;
+      return { kind: "tool_call", callId: context.harmonyCallId, tool, input };
+    } catch {
+      return undefined;
+    }
   }
 
   private invalid(issues: readonly z.ZodIssue[]): never {

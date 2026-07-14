@@ -471,6 +471,11 @@ Additional operational limitations:
 - Live structured generation can be slow or fail with a particular model/server
   combination. Keep `MODEL_MAX_OUTPUT_TOKENS` finite, use the diagnostics first,
   and rely on the typed timeout rather than repeatedly submitting requests.
+- Agent turns intentionally request ordinary JSON rather than a constrained
+  LM Studio grammar, because a multi-tool grammar can stall some local models.
+  Every response is still parsed and validated against the exact role and tool
+  schema before a tool can execute; short diagnostics retain native structured
+  output.
 - A successful response is not proof of preferred linked-device execution.
   Confirm routing in LM Studio and configure `lms link set-preferred-device`
   manually if desired.

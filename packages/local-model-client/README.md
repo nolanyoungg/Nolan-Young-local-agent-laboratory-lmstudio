@@ -10,6 +10,12 @@ Provider-neutral, structured local-model access for the laboratory. The only pro
 
 Every final result is independently validated with Zod. Connection, resolution, load, prediction, transport retries, and malformed-output repairs are independently bounded. Interrupted or partial structured generations are discarded.
 
+Application agent turns may explicitly request ordinary JSON generation rather
+than SDK constrained decoding. This avoids a large dynamic tool-union grammar
+on local models; the runtime still strictly validates the complete turn and the
+selected tool input before execution. Health diagnostics continue to use native
+Zod structured output.
+
 ## Model resolution
 
 Use the exact logical key shown by `npm run models:lmstudio`. Exact keys win. Exact physical variant IDs are also accepted. Normalized display-name matching is allowed only when it resolves to one logical key. Physical local and LM Link variants sharing the same key are collapsed, so they do not create false ambiguity.

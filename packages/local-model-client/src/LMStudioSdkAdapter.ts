@@ -20,6 +20,7 @@ export interface SdkCompletionInput<T> {
   readonly loadedModel: SdkLoadedModel;
   readonly messages: readonly ModelMessage[];
   readonly outputSchema: ZodType<T>;
+  readonly structuredOutput: boolean;
   readonly temperature: number;
   readonly maxTokens: number;
   readonly signal: AbortSignal;
@@ -159,7 +160,7 @@ export class DefaultLMStudioSdkAdapter implements LMStudioSdkAdapter {
 
     try {
       const prediction = model.respond(input.messages, {
-        structured: input.outputSchema,
+        ...(input.structuredOutput ? { structured: input.outputSchema } : {}),
         maxTokens: input.maxTokens,
         temperature: input.temperature,
         signal: input.signal,

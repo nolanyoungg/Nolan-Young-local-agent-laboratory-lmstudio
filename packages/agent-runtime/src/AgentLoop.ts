@@ -8,7 +8,6 @@ import {
   StructuredResponseParser,
   type AgentCompleteTurn,
   type AgentTurn,
-  type ModelWireTurn,
 } from "./StructuredResponseParser.js";
 import { ToolPermissionGuard } from "./ToolPermissionGuard.js";
 import type { ToolRegistry } from "./ToolRegistry.js";
@@ -99,8 +98,7 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
     this.conversation.append({
       role: "system",
       critical: true,
-      content:
-        'MODEL OUTPUT WIRE PROTOCOL: This overrides any earlier response-shape examples. Return exactly one object matching {"kind":"tool_call"|"complete","payload":"..."}. payload must be a JSON-encoded object string. For tool_call payload use {"callId":"...","tool":"...","input":{...}}. For complete payload use the role completion fields, without kind. No prose.',
+      content: `RESPONSE PROTOCOL: Return exactly one direct JSON object and no prose or Markdown. A tool turn must be {"kind":"tool_call","callId":"unique-id","tool":"one_allowed_tool","input":{...}}. A final turn must be {"kind":"complete",...required_role_fields}. Use only these tools: ${options.allowedTools.join(", ")}.`,
     });
     this.conversation.append({ role: "user", content: options.task, critical: true });
   }
@@ -138,7 +136,7 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
       });
 
       const response = await this.retryPolicy.execute(
-        () => this.options.modelClient.complete<ModelWireTurn>(request, this.parser.schema),
+        () => this.options.modelClient.complete<unknown>(request, this.parser.schema),
         this.options.shouldRetryModelError ?? (() => true),
         async ({ attempt, delayMs }) => {
           await this.options.trace?.record({
@@ -153,7 +151,10 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
       );
       let turn: AgentTurn<TFinal>;
       try {
-        turn = this.parser.parse(response.parsed);
+        turn = this.parser.parse(response.parsed, {
+          rawContent: response.content,
+          harmonyCallId: `${this.options.agentId}-${step}`,
+        });
       } catch (error) {
         if (
           error instanceof AgentRuntimeError &&
@@ -184,7 +185,7 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
             role: "user",
             critical: true,
             content:
-              "Your previous response was rejected before any tool ran. Return a corrected MODEL OUTPUT WIRE PROTOCOL object only. payload must be a JSON-encoded object string with every required field. Do not repeat a prior callId.",
+              "Your previous response was rejected before any tool ran. Return exactly one corrected JSON tool-call or completion object with every required field. Do not repeat a prior callId.",
           });
           continue;
         }

@@ -29,6 +29,7 @@ export class RuntimeLocalModelAdapter implements RuntimeModelClient {
         model: request.model,
         temperature: request.temperature,
         maxTokens: request.maxOutputTokens,
+        structuredOutput: false,
         ...(this.signal === undefined ? {} : { signal: this.signal }),
       },
       outputSchema,

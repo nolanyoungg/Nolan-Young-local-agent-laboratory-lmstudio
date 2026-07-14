@@ -25,6 +25,53 @@ function safeIssues(issues: readonly ZodIssue[]): string {
     .slice(0, 1_000);
 }
 
+/**
+ * Some reasoning-capable local models place their final JSON after analysis or
+ * a Markdown fence even when instructed not to. Keep only the last complete
+ * JSON object/array in memory; it still must pass the caller's strict Zod
+ * schema before it is accepted. Nothing from the discarded prose is persisted.
+ */
+function finalJsonValue(content: string): string | undefined {
+  let latest: string | undefined;
+  let start = -1;
+  let stack: string[] = [];
+  let quoted = false;
+  let escaped = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index];
+    if (character === undefined) continue;
+    if (start === -1) {
+      if (character === "{" || character === "[") {
+        start = index;
+        stack = [character === "{" ? "}" : "]"];
+        quoted = false;
+        escaped = false;
+      }
+      continue;
+    }
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+    if (character === '"') {
+      quoted = true;
+      continue;
+    }
+    if (character === "{") stack.push("}");
+    else if (character === "[") stack.push("]");
+    else if (character === stack.at(-1)) {
+      stack.pop();
+      if (stack.length === 0) {
+        latest = content.slice(start, index + 1);
+        start = -1;
+      }
+    }
+  }
+  return latest;
+}
+
 export function parseStructuredCompletion<T>(
   completion: RawStructuredCompletion,
   outputSchema: ZodType<T>,
@@ -43,7 +90,7 @@ export function parseStructuredCompletion<T>(
   let candidate = completion.parsed;
   if (candidate === undefined) {
     try {
-      candidate = JSON.parse(content) as unknown;
+      candidate = JSON.parse(finalJsonValue(content) ?? content) as unknown;
     } catch (error) {
       throw new ModelClientError(
         ModelClientErrorCode.malformedResponse,

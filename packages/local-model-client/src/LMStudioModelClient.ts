@@ -62,7 +62,7 @@ function assertCompleteGeneration(result: RawProviderResult): void {
   if (normalized !== undefined && INCOMPLETE_STOP_REASONS.has(normalized)) {
     throw new ModelClientError(
       ModelClientErrorCode.invalidResponse,
-      "LM Studio ended the generation before a complete structured response; partial output was discarded.",
+      "LM Studio ended the generation before a complete response; partial output was discarded.",
       { retryable: true },
     );
   }
@@ -73,6 +73,7 @@ const COMPLETION_REQUEST_KEYS = new Set([
   "messages",
   "model",
   "signal",
+  "structuredOutput",
   "temperature",
 ]);
 
@@ -88,6 +89,9 @@ function parseCompletionRequest(request: ModelCompletionRequest) {
     ...(request.model === undefined ? {} : { model: request.model }),
     ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
     ...(request.maxTokens === undefined ? {} : { maxTokens: request.maxTokens }),
+    ...(request.structuredOutput === undefined
+      ? {}
+      : { structuredOutput: request.structuredOutput }),
   });
   if (!result.success) {
     const issues = result.error.issues
@@ -187,6 +191,7 @@ export class LMStudioModelClient implements LocalModelClient {
             providerModel,
             messages,
             outputSchema,
+            parsedRequest.structuredOutput ?? true,
             temperature,
             maxTokens,
             request.signal,
@@ -223,7 +228,7 @@ export class LMStudioModelClient implements LocalModelClient {
 
     throw new ModelClientError(
       ModelClientErrorCode.malformedResponse,
-      "LM Studio exhausted structured-output repair attempts.",
+      "LM Studio exhausted JSON response repair attempts.",
     );
   }
 
@@ -231,6 +236,7 @@ export class LMStudioModelClient implements LocalModelClient {
     model: string,
     messages: readonly ModelMessage[],
     outputSchema: ZodType<T>,
+    structuredOutput: boolean,
     temperature: number,
     maxTokens: number,
     signal: AbortSignal | undefined,
@@ -275,6 +281,7 @@ export class LMStudioModelClient implements LocalModelClient {
           loadedModel,
           messages,
           outputSchema,
+          structuredOutput,
           temperature,
           maxTokens,
           signal: deadlineSignal,

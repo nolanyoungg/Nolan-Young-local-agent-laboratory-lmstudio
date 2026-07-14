@@ -242,30 +242,54 @@ describe("agent runtime", () => {
     expect(() => new ToolPermissionGuard([]).assertAllowed("read_file")).toThrow(AgentRuntimeError);
   });
 
-  it("unwraps the compact model wire envelope before strict local validation", () => {
+  it("strictly validates a direct JSON tool turn before it reaches the registry", () => {
     const parser = new StructuredResponseParser(finalSchema, [
       { name: "read_file", inputSchema: z.object({ path: z.string() }).strict() },
     ]);
     expect(
       parser.parse({
         kind: "tool_call",
-        payload: JSON.stringify({ callId: "wire-one", tool: "read_file", input: { path: "a.ts" } }),
+        callId: "direct-one",
+        tool: "read_file",
+        input: { path: "a.ts" },
       }),
     ).toEqual({
       kind: "tool_call",
-      callId: "wire-one",
+      callId: "direct-one",
       tool: "read_file",
       input: { path: "a.ts" },
     });
-    expect(() =>
-      parser.parse({ kind: "complete", payload: JSON.stringify({ summary: "missing" }) }),
-    ).toThrow(AgentRuntimeError);
+    expect(() => parser.parse({ kind: "complete", summary: "missing" })).toThrow(AgentRuntimeError);
   });
 
-  it("repairs a malformed wire response without executing a tool", async () => {
+  it("adapts a Harmony tool call before strict local validation", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      {
+        name: "list_files",
+        inputSchema: z.object({ path: z.string(), recursive: z.boolean() }).strict(),
+      },
+    ]);
+    expect(
+      parser.parse(
+        { path: ".", recursive: false },
+        {
+          harmonyCallId: "planner-1",
+          rawContent:
+            '<|channel|>analysis<|message|>inspect<|end|><|start|>assistant<|channel|>commentary to=tool_call_list_files <|constrain|>json<|message|>{"path":".","recursive":false}',
+        },
+      ),
+    ).toEqual({
+      kind: "tool_call",
+      callId: "planner-1",
+      tool: "list_files",
+      input: { path: ".", recursive: false },
+    });
+  });
+
+  it("repairs a malformed JSON response without executing a tool", async () => {
     const tools = new ToolRegistry();
     const client = new ScriptedClient([
-      { kind: "complete", payload: "{}" },
+      { kind: "complete" },
       { kind: "complete", summary: "recovered", evidence: [], findings: [] },
     ]);
     const result = await baseLoop(client, tools).run();
