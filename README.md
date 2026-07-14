@@ -11,17 +11,18 @@ Node.js/TypeScript repository. The laboratory has three applications:
 
 Inference is local through LM Studio. This project does **not** use an OpenAI
 API key, the OpenAI SDK, Ollama, a cloud fallback, SSH, Git automation, or a
-remote filesystem. It talks to the Windows-local LM Studio control plane at
-`http://127.0.0.1:1234`. That loopback server is the **LM Link entry point**:
-when a linked Mac is connected and selected as the preferred device, LM Studio
-forwards the inference to the Mac-loaded model. The Windows controller keeps
-the workspace, tools, locks, and reports; the Mac performs model inference.
+remote filesystem. It talks to the controller machine's local LM Studio control
+plane at `http://127.0.0.1:1234`. That loopback server is the **LM Link entry
+point**: when a linked device is connected and selected as preferred, LM Studio
+forwards inference to that device's loaded model. The controller machine keeps
+the workspace, tools, locks, and reports; the preferred linked device performs
+model inference.
 
 > [!IMPORTANT]
-> The command-line applications deliberately reject LAN, remote, and Mac IP
+> The command-line applications deliberately reject LAN, remote, and linked-device IP
 > addresses. Even if LM Studio's Developer screen advertises a LAN URL, use
 > `http://127.0.0.1:1234` with this repository. That restriction keeps model
-> traffic local to the Windows controller and prevents accidental workspace or
+> traffic local to the controller machine and prevents accidental workspace or
 > credential exposure on the network.
 
 ## Contents
@@ -43,7 +44,7 @@ the workspace, tools, locks, and reports; the Mac performs model inference.
 
 ## What you need
 
-### Required on the Windows controller
+### Required on the controller machine
 
 - **Node.js 24 LTS** and npm 11 or later. The repository enforces Node `>=24 <25`.
 - **Git** for cloning and updating the repository.
@@ -52,15 +53,15 @@ the workspace, tools, locks, and reports; the Mac performs model inference.
   `openai/gpt-oss-20b`, but the exact identifier visible in your LM Studio
   installation is the source of truth.
 
-### Optional Mac inference machine
+### Optional linked inference device
 
 - LM Studio or `llmster`, configured with **LM Link**.
-- A model compatible with the Windows-side selected logical model key.
-- The Windows controller must still use its own loopback URL. Do not substitute
-  the Mac address or an LM Link address into `LM_STUDIO_BASE_URL`.
+- A model compatible with the controller-selected logical model key.
+- The controller machine must still use its own loopback URL. Do not substitute
+  a linked-device address or an LM Link address into `LM_STUDIO_BASE_URL`.
 
-The Mac is an inference peer, not a target workspace. This project never grants
-the model remote shell, remote file, SSH, or direct network access.
+An inference peer is not a target workspace. This project never grants the
+model remote shell, remote file, SSH, or direct network access.
 
 ## Get a copy on Windows
 
@@ -97,7 +98,7 @@ unless it is the workspace you explicitly intend to change.
 
 ## Get a copy on macOS
 
-The Mac can be either a development machine or an LM Link inference peer. If it
+macOS can be either a development platform or host an LM Link inference peer. If it
 will be an inference peer only, cloning this repository is optional. If you want
 to run the commands locally on macOS, use Terminal:
 
@@ -123,9 +124,9 @@ export LM_STUDIO_MODEL=openai/gpt-oss-20b
 npm run check:lmstudio -- --inference
 ```
 
-For a Windows controller with Mac acceleration, follow the dedicated
-[LM Link setup guide](docs/lm-link-setup.md). Keep the agent process on Windows
-and leave the agent's base URL as Windows loopback.
+For any controller machine with a linked inference device, follow the dedicated
+[LM Link setup guide](docs/lm-link-setup.md). Keep the agent process on the
+controller and leave its base URL as that machine's loopback address.
 
 ## Configure LM Studio
 
@@ -470,8 +471,9 @@ Additional operational limitations:
 - Live structured generation can be slow or fail with a particular model/server
   combination. Keep `MODEL_MAX_OUTPUT_TOKENS` finite, use the diagnostics first,
   and rely on the typed timeout rather than repeatedly submitting requests.
-- A successful response is not proof of Mac execution. Confirm routing in LM
-  Studio and configure `lms link set-preferred-device` manually if desired.
+- A successful response is not proof of preferred linked-device execution.
+  Confirm routing in LM Studio and configure `lms link set-preferred-device`
+  manually if desired.
 - The threat model trusts the logged-in local user. Concurrent malicious
   same-account filesystem races and power-loss orphan prevention are residual
   risks; see the [security model](docs/security-model.md).
@@ -498,7 +500,7 @@ selected laboratory-owned configuration → safe default**.
 | `REPORTS_DIRECTORY`           | `reports/runs`          | Trusted report and lock root                   |
 
 `LM_STUDIO_BASE_URL` must be a credential-free loopback HTTP URL with no path,
-query, or fragment. `http://192.168.x.x:1234`, a hostname, a Mac IP, and a
+query, or fragment. `http://192.168.x.x:1234`, a hostname, a linked-device IP, and a
 WebSocket URL are intentionally invalid inputs.
 
 ## Development and validation
@@ -522,39 +524,39 @@ Node 24, explicit mocks, no secrets, and no live model/network dependency.
 
 ## Troubleshooting
 
-| Symptom                               | Check                                                        | Resolution                                                                                                      |
-| ------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `BASE_URL_INVALID` or a URL rejection | `npm run check:lmstudio -- --base-url http://127.0.0.1:1234` | Use exactly a loopback HTTP URL; do not use the LAN address shown by LM Studio                                  |
-| Model is not found                    | `npm run models:lmstudio`                                    | Copy the exact logical key or exact selected variant ID into `--model` / `LM_STUDIO_MODEL`                      |
-| Duplicate local and linked models     | `npm run models:lmstudio -- --json`                          | Treat them as one logical key; set LM Link's preferred device manually if routing matters                       |
-| Diagnostic inference fails            | `npm run check:lmstudio -- --inference --json`               | Confirm server/model state, use a finite output cap, and inspect sanitized output; no automatic fallback occurs |
-| Agent exits `3`                       | Read `model-diagnostics.json` and `final-result.json`        | Fix LM Studio/model availability or retry only after the server is healthy                                      |
-| Build Assistant rejects a command     | Inspect `apps/build-assistant/config/commands.example.json`  | Use a known symbolic ID or explicitly select an operator-controlled command map                                 |
-| A dry run did not change files        | Inspect `proposed-diff.patch`                                | This is expected. Re-run with `--mode apply` only after review                                                  |
-| Reports conflict with a workspace     | Choose `--reports-root` outside `--workspace`                | Report/lock roots cannot be inside the target workspace                                                         |
-| You need Mac routing confirmation     | Review LM Studio's device status and `npm run check:lmlink`  | A successful response is insufficient; confirm it in LM Studio itself                                           |
+| Symptom                                     | Check                                                        | Resolution                                                                                                      |
+| ------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `BASE_URL_INVALID` or a URL rejection       | `npm run check:lmstudio -- --base-url http://127.0.0.1:1234` | Use exactly a loopback HTTP URL; do not use the LAN address shown by LM Studio                                  |
+| Model is not found                          | `npm run models:lmstudio`                                    | Copy the exact logical key or exact selected variant ID into `--model` / `LM_STUDIO_MODEL`                      |
+| Duplicate local and linked models           | `npm run models:lmstudio -- --json`                          | Treat them as one logical key; set LM Link's preferred device manually if routing matters                       |
+| Diagnostic inference fails                  | `npm run check:lmstudio -- --inference --json`               | Confirm server/model state, use a finite output cap, and inspect sanitized output; no automatic fallback occurs |
+| Agent exits `3`                             | Read `model-diagnostics.json` and `final-result.json`        | Fix LM Studio/model availability or retry only after the server is healthy                                      |
+| Build Assistant rejects a command           | Inspect `apps/build-assistant/config/commands.example.json`  | Use a known symbolic ID or explicitly select an operator-controlled command map                                 |
+| A dry run did not change files              | Inspect `proposed-diff.patch`                                | This is expected. Re-run with `--mode apply` only after review                                                  |
+| Reports conflict with a workspace           | Choose `--reports-root` outside `--workspace`                | Report/lock roots cannot be inside the target workspace                                                         |
+| You need linked-device routing confirmation | Review LM Studio's device status and `npm run check:lmlink`  | A successful response is insufficient; confirm it in LM Studio itself                                           |
 
 For more detail, see [LM Studio setup](docs/lm-studio-setup.md),
-[LM Link setup](docs/lm-link-setup.md), [Windows-to-Mac topology](docs/windows-mac-topology.md),
+[LM Link setup](docs/lm-link-setup.md), [device topology](docs/device-topology.md),
 [LM Link troubleshooting](docs/troubleshooting-lm-link.md),
 [architecture](docs/architecture.md), and the [security model](docs/security-model.md).
 
 ## End-to-end operator playbook
 
-This is the recommended sequence for a real Windows controller plus a linked
-Mac inference device. It deliberately separates **connection proof**, **one
+This is the recommended sequence for a controller machine plus a linked
+inference device. It deliberately separates **connection proof**, **one
 scoped edit**, **build proof**, and **release proof**. Each command has a
 single responsibility, and each report can be inspected before proceeding.
 
 ### A. Confirm the LM Link route, not a LAN connection
 
-Keep the agent on Windows and use Windows loopback. Do **not** substitute the
-Mac's LAN address shown in LM Studio. LM Link is responsible for forwarding
+Keep the agent on the controller machine and use its loopback address. Do **not** substitute a
+linked device's LAN address shown in LM Studio. LM Link is responsible for forwarding
 the loopback request to the preferred device.
 
 ```powershell
 # Both commands are read-only. The first proves peer/preference state; the
-# second proves what the Windows controller sees as loaded.
+# second proves what the controller machine sees as loaded.
 lms link status --json
 lms ps --json
 
@@ -562,14 +564,14 @@ lms ps --json
 npm run check:lmlink -- --model openai/gpt-oss-20b --json
 ```
 
-Expected signals are a connected Mac peer, that Mac's device identifier as
+Expected signals are a connected inference peer, that device's identifier as
 `preferredDeviceIdentifier`, and an `openai/gpt-oss-20b` entry associated with
-the Mac. A clean diagnostic has a `PASS` inference check. If LM Studio shows
+that device. A clean diagnostic has a `PASS` inference check. If LM Studio shows
 `processingPrompt` while `queued` is zero, stop submitting new requests: cancel
-the prompt on the Mac, then eject and reload the same model if it does not
+the prompt on the active inference device, then eject and reload the same model if it does not
 become idle. Re-run the diagnostic before an apply-mode agent run.
 
-`lms ps` and `lms link status` identify the selected remote device; they do not
+`lms ps` and `lms link status` identify the selected linked device; they do not
 prove that any particular token was executed on that device. During a live
 test, also observe the active inference device in LM Studio. The laboratory
 never changes the preferred device itself. If you need to change it, use LM

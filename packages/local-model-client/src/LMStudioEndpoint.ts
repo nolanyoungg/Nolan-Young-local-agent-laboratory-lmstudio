@@ -42,7 +42,7 @@ export function validateLMStudioEndpoint(value: string): ValidatedLMStudioEndpoi
   if (hostname !== "127.0.0.1" && hostname !== "localhost" && hostname !== "[::1]") {
     throw new ModelClientError(
       ModelClientErrorCode.endpointInvalid,
-      "LM Studio base URL must use a loopback host (127.0.0.1, localhost, or ::1), never a LAN or Mac address.",
+      "LM Studio base URL must use a loopback host (127.0.0.1, localhost, or ::1), never a LAN or linked-device address.",
     );
   }
 

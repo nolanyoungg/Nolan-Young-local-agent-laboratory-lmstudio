@@ -382,7 +382,7 @@ async function diagnoseAndResolveModel(
       routingMetadataAvailable: resolved.routingMetadataAvailable,
     },
     routingNotice:
-      "Remote Mac execution requires confirmation in LM Studio; a response alone is not proof of routing.",
+      "Preferred linked-device execution requires confirmation in LM Studio; a response alone is not proof of routing.",
   });
   return resolved.selectedVariantId;
 }

@@ -1,4 +1,4 @@
-# LM Studio Setup on Windows
+# Local LM Studio Setup
 
 1. Install a current LM Studio release supporting LM Link and native API v1.
 2. Start LM Studio and open the Developer page.
@@ -13,6 +13,6 @@ Authentication requires LM Studio 0.4.0 or newer. The published TypeScript SDK d
 
 These credentials are distinct:
 
-- An **LM Studio API token** authenticates requests to the Windows-local API server and is sent only as a Bearer header.
+- An **LM Studio API token** authenticates requests to the local API server and is sent only as a Bearer header.
 - An **LM Studio account** signs the operator into LM Link; its password is never application configuration.
 - **OpenAI API keys are unused**. Do not add one to this laboratory; there is no OpenAI SDK, provider, or fallback.
