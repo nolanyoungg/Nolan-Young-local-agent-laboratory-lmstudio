@@ -38,6 +38,8 @@ the workspace, tools, locks, and reports; the Mac performs model inference.
 - [Configuration reference](#configuration-reference)
 - [Development and validation](#development-and-validation)
 - [Troubleshooting](#troubleshooting)
+- [End-to-end operator playbook](#end-to-end-operator-playbook)
+- [How to judge a completed run](#how-to-judge-a-completed-run)
 
 ## What you need
 
@@ -536,5 +538,175 @@ For more detail, see [LM Studio setup](docs/lm-studio-setup.md),
 [LM Link setup](docs/lm-link-setup.md), [Windows-to-Mac topology](docs/windows-mac-topology.md),
 [LM Link troubleshooting](docs/troubleshooting-lm-link.md),
 [architecture](docs/architecture.md), and the [security model](docs/security-model.md).
+
+## End-to-end operator playbook
+
+This is the recommended sequence for a real Windows controller plus a linked
+Mac inference device. It deliberately separates **connection proof**, **one
+scoped edit**, **build proof**, and **release proof**. Each command has a
+single responsibility, and each report can be inspected before proceeding.
+
+### A. Confirm the LM Link route, not a LAN connection
+
+Keep the agent on Windows and use Windows loopback. Do **not** substitute the
+Mac's LAN address shown in LM Studio. LM Link is responsible for forwarding
+the loopback request to the preferred device.
+
+```powershell
+# Both commands are read-only. The first proves peer/preference state; the
+# second proves what the Windows controller sees as loaded.
+lms link status --json
+lms ps --json
+
+# Then make one bounded application-level check.
+npm run check:lmlink -- --model openai/gpt-oss-20b --json
+```
+
+Expected signals are a connected Mac peer, that Mac's device identifier as
+`preferredDeviceIdentifier`, and an `openai/gpt-oss-20b` entry associated with
+the Mac. A clean diagnostic has a `PASS` inference check. If LM Studio shows
+`processingPrompt` while `queued` is zero, stop submitting new requests: cancel
+the prompt on the Mac, then eject and reload the same model if it does not
+become idle. Re-run the diagnostic before an apply-mode agent run.
+
+`lms ps` and `lms link status` identify the selected remote device; they do not
+prove that any particular token was executed on that device. During a live
+test, also observe the active inference device in LM Studio. The laboratory
+never changes the preferred device itself. If you need to change it, use LM
+Studio or `lms link set-preferred-device` manually and then repeat this section.
+
+### B. Edit one file with Code Editor
+
+Use a precise task that says exactly what may change. This example first plans,
+then rehearses against the overlay, and only then applies. `v2` is intentionally
+in the requested visible change so the result is easy to verify.
+
+```powershell
+$lab = "C:\Users\NolanYoung\Developer\repos\Nolan-Young-local-agent-laboratory-lmstudio"
+$testRoot = "C:\Users\NolanYoung\Developer\Sandbox\local-agent-tests"
+$reports = "C:\Users\NolanYoung\Developer\Sandbox\local-agent-reports\code-editor-v2"
+
+Set-Location $lab
+
+# 1. No target mutation: inspect and write a plan only.
+npm run code-editor -- `
+  --workspace $testRoot `
+  --task "Inspect home.php only. Plan a minimal visible v2 label and one small readability improvement; preserve PHP behavior." `
+  --mode plan-only `
+  --model openai/gpt-oss-20b `
+  --reports-root $reports
+
+# 2. No target mutation: execute editor/reviewer against the overlay.
+npm run code-editor -- `
+  --workspace $testRoot `
+  --task "Edit home.php only. Add a minimal visible v2 label and one small readability improvement. Preserve all PHP behavior and existing links." `
+  --mode dry-run `
+  --model openai/gpt-oss-20b `
+  --reports-root $reports
+
+# Read proposed-diff.patch and review-report.md in the newest run directory.
+
+# 3. Mutate only after the dry-run diff is acceptable.
+npm run code-editor -- `
+  --workspace $testRoot `
+  --task "Edit home.php only. Add a minimal visible v2 label and one small readability improvement. Preserve all PHP behavior and existing links." `
+  --mode apply `
+  --model openai/gpt-oss-20b `
+  --reports-root $reports
+```
+
+**What success means:** `final-result.json` has `status: "succeeded"`; the
+changed-file report lists only `home.php`; the review report has no unresolved
+findings; and the actual file visibly contains the intended `v2` change. Use
+`git diff -- C:\Users\NolanYoung\Developer\Sandbox\local-agent-tests\home.php`
+or compare the original hash recorded in the report with the new hash. If the
+model proposes any other file, reject the run rather than broadening the task.
+
+### C. Build the project with Build Assistant
+
+Build Assistant does not receive a raw command string. `build` is looked up in
+the trusted command map, so the model cannot turn this into an arbitrary shell
+operation. A clean initial build is a valid success: no repair is necessary,
+and no model turn needs to occur.
+
+```powershell
+$project = "C:\Users\NolanYoung\Developer\Sandbox\local-agent-tests\nolan-young-theme-template-01"
+$buildReports = "C:\Users\NolanYoung\Developer\Sandbox\local-agent-reports\build-assistant-v2"
+
+# Dependency installation is a separate, operator-authorized project action.
+Set-Location $project
+npm ci
+
+# The application executes only the trusted `build` command ID.
+Set-Location $lab
+npm run build-assistant -- `
+  --workspace $project `
+  --command build `
+  --mode apply `
+  --model openai/gpt-oss-20b `
+  --reports-root $buildReports `
+  --json
+```
+
+**What success means:** `status` and `initialStatus` are `succeeded`,
+`finalStatus` is `initial-command-succeeded`, `repairPasses` is `0`, and
+`changedFiles` is empty. That is the expected result for a healthy project.
+If a build fails, the agent may read only bounded diagnostic log deltas and may
+attempt at most three scoped repair/rebuild/review passes. In dry-run, it must
+say that verification was not executed—an overlay change never proves the real
+workspace now builds.
+
+### D. Review and package a project with Release Engineer
+
+Release Engineer accepts projects, not only Git repositories. It requires a
+valid `package.json` name/version and expected release files, but it treats
+installed dependencies, source-control data, reports, caches, secrets, and
+old archives as excluded development material rather than release contents.
+
+```powershell
+$releaseReports = "C:\Users\NolanYoung\Developer\Sandbox\local-agent-reports\release-engineer-v2"
+
+# Deterministic review: no model, no source mutation, no Git requirement.
+npm run release-engineer -- check `
+  --workspace $project `
+  --mode apply `
+  --reports-root $releaseReports `
+  --json
+
+# Validate exactly what would be packaged without writing a ZIP/checksum.
+npm run release-engineer -- package `
+  --workspace $project `
+  --mode dry-run `
+  --reports-root $releaseReports `
+  --json
+
+# Only when the manifest is approved, emit a deterministic archive in reports.
+npm run release-engineer -- package `
+  --workspace $project `
+  --mode apply `
+  --reports-root $releaseReports
+```
+
+**What success means:** `checks.passed` is `true`, findings are empty, and the
+reported project name/version match `package.json`. In dry-run, there must be
+no ZIP or checksum. In apply mode, the ZIP is created only below the trusted
+report root, is inspected after creation, contains deterministic sorted entries,
+and includes a SHA-256 checksum. No action publishes, tags, commits, pushes, or
+creates a hosted release.
+
+## How to judge a completed run
+
+Use this compact comparison after each agent:
+
+| Agent            | Expected healthy outcome                                            | Evidence to inspect                                                             | Failure that must not be called success                                                          |
+| ---------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Code Editor      | Only requested file(s) changed; reviewer accepts result             | `proposed-diff.patch`, `changed-files.json`, `review-report.md`, real file diff | A plan/dry-run, a timeout, a rejected review, or an edit outside scope                           |
+| Build Assistant  | Trusted build exits successfully without repair                     | JSON `initialStatus`, `finalStatus`, `process-log` metadata                     | A proposed overlay repair, unresolved build, watcher crash, or model outage during needed repair |
+| Release Engineer | Deterministic policy passes; planned/created archive matches policy | `check-results.json`, manifest, inspection, checksum, final report              | A passing model opinion when deterministic checks still fail                                     |
+
+The final report is a summary, not the only evidence. For an apply-mode source
+change, always inspect the actual diff. For a build, inspect the trusted command
+status. For a release, inspect the deterministic findings and manifest. This
+keeps a fluent model explanation from being mistaken for successful work.
 
 Licensed under the [MIT License](LICENSE).
