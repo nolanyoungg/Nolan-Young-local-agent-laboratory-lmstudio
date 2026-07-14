@@ -1,4 +1,13 @@
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -143,6 +152,31 @@ describe("ReleaseEngineerWorkflow", () => {
       "utf8",
     );
     expect(trace).not.toContain(fixture.workspace);
+  });
+
+  it("accepts a project with installed dependencies and a LICENSE.txt variant", async () => {
+    const fixture = await createFixture();
+    await rename(
+      path.join(fixture.workspace, "LICENSE"),
+      path.join(fixture.workspace, "LICENSE.txt"),
+    );
+    await mkdir(path.join(fixture.workspace, "node_modules", "example"), { recursive: true });
+    await writeFile(
+      path.join(fixture.workspace, "node_modules", "example", "index.js"),
+      "export {};\n",
+    );
+
+    const result = await new ReleaseEngineerWorkflow({
+      action: "check",
+      mode: "dry-run",
+      workspace: fixture.workspace,
+      reportsRoot: fixture.reports,
+      policies,
+      repair: false,
+    }).run();
+
+    expect(result.status).toBe("succeeded");
+    expect(result.checks.passed).toBe(true);
   });
 
   it("fails checks when forbidden secret-bearing files are present", async () => {

@@ -20,7 +20,11 @@ const ToolCallTurnSchema = z
     kind: z.literal("tool_call"),
     callId: z.string().min(1).max(128),
     tool: z.string().regex(/^[a-z][a-z0-9_]{1,63}$/),
-    input: z.unknown(),
+    // Tool inputs are always JSON objects. `z.unknown()` is treated as optional
+    // by Zod's JSON-schema conversion, producing an unconstrained `{}` member
+    // that some constrained decoders cannot advance through. The concrete tool
+    // schema remains the authority in ToolRegistry before execution.
+    input: z.record(z.unknown()),
   })
   .strict();
 

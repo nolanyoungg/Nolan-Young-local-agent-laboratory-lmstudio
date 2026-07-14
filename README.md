@@ -12,8 +12,10 @@ Node.js/TypeScript repository. The laboratory has three applications:
 Inference is local through LM Studio. This project does **not** use an OpenAI
 API key, the OpenAI SDK, Ollama, a cloud fallback, SSH, Git automation, or a
 remote filesystem. It talks to the Windows-local LM Studio control plane at
-`http://127.0.0.1:1234`. LM Studio may then route inference to a preferred
-linked Mac, but a response alone is not proof that the Mac performed it.
+`http://127.0.0.1:1234`. That loopback server is the **LM Link entry point**:
+when a linked Mac is connected and selected as the preferred device, LM Studio
+forwards the inference to the Mac-loaded model. The Windows controller keeps
+the workspace, tools, locks, and reports; the Mac performs model inference.
 
 > [!IMPORTANT]
 > The command-line applications deliberately reject LAN, remote, and Mac IP

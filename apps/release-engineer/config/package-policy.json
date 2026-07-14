@@ -1,5 +1,5 @@
 {
-  "include": ["package.json", "README.md", "LICENSE", "dist/**", "src/**"],
+  "include": ["**/*"],
   "exclude": [
     ".git",
     ".git/**",
