@@ -23,6 +23,7 @@ interface ErasedToolDefinition {
   readonly name: string;
   readonly description: string;
   readonly mutating: boolean;
+  readonly inputSchema: z.ZodType<unknown>;
   readonly parse: (input: unknown) => unknown;
   readonly execute: (input: unknown, context: ToolExecutionContext) => Promise<unknown>;
 }
@@ -133,6 +134,7 @@ export class ToolRegistry {
       name: definition.name,
       description: definition.description,
       mutating: definition.mutating,
+      inputSchema: definition.inputSchema as z.ZodType<unknown>,
       parse: (input) => definition.inputSchema.parse(input),
       execute: (input, context) => definition.execute(input as TInput, context),
     });
@@ -142,6 +144,23 @@ export class ToolRegistry {
     return [...this.tools.values()]
       .map(({ name, description, mutating }) => ({ name, description, mutating }))
       .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  /**
+   * Returns only schemas that a role is permitted to call. These schemas are
+   * used for constrained model output; execution still validates the input
+   * again immediately before the tool runs.
+   */
+  public schemasFor(names: readonly string[]): readonly Readonly<{
+    name: string;
+    inputSchema: z.ZodType<unknown>;
+  }>[] {
+    return [...new Set(names)]
+      .sort((left, right) => left.localeCompare(right))
+      .flatMap((name) => {
+        const tool = this.tools.get(name);
+        return tool === undefined ? [] : [{ name: tool.name, inputSchema: tool.inputSchema }];
+      });
   }
 
   public mutationJournal(): readonly MutationJournalEntry[] {

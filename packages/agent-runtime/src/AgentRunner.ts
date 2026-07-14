@@ -6,6 +6,7 @@ export interface AgentDefinition<TFinal extends Readonly<Record<string, unknown>
   readonly systemPrompt: string;
   readonly allowedTools: readonly string[];
   readonly finalSchema: z.ZodType<TFinal>;
+  readonly transportFinalSchema?: z.ZodType<TFinal>;
 }
 
 export type AgentRunOptions<TFinal extends Readonly<Record<string, unknown>>> = Omit<
@@ -24,6 +25,9 @@ export class AgentRunner {
       systemPrompt: definition.systemPrompt,
       allowedTools: definition.allowedTools,
       finalSchema: definition.finalSchema,
+      ...(definition.transportFinalSchema === undefined
+        ? {}
+        : { transportFinalSchema: definition.transportFinalSchema }),
     }).run();
   }
 }

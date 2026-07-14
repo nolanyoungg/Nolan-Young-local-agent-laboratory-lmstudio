@@ -59,6 +59,7 @@ export interface AgentLoopOptions<TFinal extends Readonly<Record<string, unknown
   readonly maximumSteps: number;
   readonly allowedTools: readonly string[];
   readonly finalSchema: z.ZodType<TFinal>;
+  readonly transportFinalSchema?: z.ZodType<TFinal>;
   readonly dryRun: boolean;
   readonly modelClient: RuntimeModelClient;
   readonly tools: ToolRegistry;
@@ -85,6 +86,8 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
   public constructor(private readonly options: AgentLoopOptions<TFinal>) {
     this.parser = new StructuredResponseParser<TFinal>(
       options.finalSchema as unknown as z.AnyZodObject,
+      options.tools.schemasFor(options.allowedTools),
+      options.transportFinalSchema as z.AnyZodObject | undefined,
     );
     this.permissions = new ToolPermissionGuard(options.allowedTools);
     this.stepLimiter = new StepLimiter(options.maximumSteps);
