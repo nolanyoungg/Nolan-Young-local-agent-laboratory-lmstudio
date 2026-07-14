@@ -11,15 +11,18 @@ Node.js/TypeScript repository. The laboratory has three applications:
 
 Inference is local through LM Studio. This project does **not** use an OpenAI
 API key, the OpenAI SDK, Ollama, a cloud fallback, SSH, Git automation, or a
-remote filesystem. It talks to the Windows-local LM Studio control plane at
-`http://127.0.0.1:1234`. LM Studio may then route inference to a preferred
-linked Mac, but a response alone is not proof that the Mac performed it.
+remote filesystem. It talks to the controller machine's local LM Studio control
+plane at `http://127.0.0.1:1234`. That loopback server is the **LM Link entry
+point**: when a linked device is connected and selected as preferred, LM Studio
+forwards inference to that device's loaded model. The controller machine keeps
+the workspace, tools, locks, and reports; the preferred linked device performs
+model inference.
 
 > [!IMPORTANT]
-> The command-line applications deliberately reject LAN, remote, and Mac IP
+> The command-line applications deliberately reject LAN, remote, and linked-device IP
 > addresses. Even if LM Studio's Developer screen advertises a LAN URL, use
 > `http://127.0.0.1:1234` with this repository. That restriction keeps model
-> traffic local to the Windows controller and prevents accidental workspace or
+> traffic local to the controller machine and prevents accidental workspace or
 > credential exposure on the network.
 
 ## Contents
@@ -36,10 +39,12 @@ linked Mac, but a response alone is not proof that the Mac performed it.
 - [Configuration reference](#configuration-reference)
 - [Development and validation](#development-and-validation)
 - [Troubleshooting](#troubleshooting)
+- [End-to-end operator playbook](#end-to-end-operator-playbook)
+- [How to judge a completed run](#how-to-judge-a-completed-run)
 
 ## What you need
 
-### Required on the Windows controller
+### Required on the controller machine
 
 - **Node.js 24 LTS** and npm 11 or later. The repository enforces Node `>=24 <25`.
 - **Git** for cloning and updating the repository.
@@ -48,15 +53,15 @@ linked Mac, but a response alone is not proof that the Mac performed it.
   `openai/gpt-oss-20b`, but the exact identifier visible in your LM Studio
   installation is the source of truth.
 
-### Optional Mac inference machine
+### Optional linked inference device
 
 - LM Studio or `llmster`, configured with **LM Link**.
-- A model compatible with the Windows-side selected logical model key.
-- The Windows controller must still use its own loopback URL. Do not substitute
-  the Mac address or an LM Link address into `LM_STUDIO_BASE_URL`.
+- A model compatible with the controller-selected logical model key.
+- The controller machine must still use its own loopback URL. Do not substitute
+  a linked-device address or an LM Link address into `LM_STUDIO_BASE_URL`.
 
-The Mac is an inference peer, not a target workspace. This project never grants
-the model remote shell, remote file, SSH, or direct network access.
+An inference peer is not a target workspace. This project never grants the
+model remote shell, remote file, SSH, or direct network access.
 
 ## Get a copy on Windows
 
@@ -93,7 +98,7 @@ unless it is the workspace you explicitly intend to change.
 
 ## Get a copy on macOS
 
-The Mac can be either a development machine or an LM Link inference peer. If it
+macOS can be either a development platform or host an LM Link inference peer. If it
 will be an inference peer only, cloning this repository is optional. If you want
 to run the commands locally on macOS, use Terminal:
 
@@ -119,9 +124,9 @@ export LM_STUDIO_MODEL=openai/gpt-oss-20b
 npm run check:lmstudio -- --inference
 ```
 
-For a Windows controller with Mac acceleration, follow the dedicated
-[LM Link setup guide](docs/lm-link-setup.md). Keep the agent process on Windows
-and leave the agent's base URL as Windows loopback.
+For any controller machine with a linked inference device, follow the dedicated
+[LM Link setup guide](docs/lm-link-setup.md). Keep the agent process on the
+controller and leave its base URL as that machine's loopback address.
 
 ## Configure LM Studio
 
@@ -466,8 +471,14 @@ Additional operational limitations:
 - Live structured generation can be slow or fail with a particular model/server
   combination. Keep `MODEL_MAX_OUTPUT_TOKENS` finite, use the diagnostics first,
   and rely on the typed timeout rather than repeatedly submitting requests.
-- A successful response is not proof of Mac execution. Confirm routing in LM
-  Studio and configure `lms link set-preferred-device` manually if desired.
+- Agent turns intentionally request ordinary JSON rather than a constrained
+  LM Studio grammar, because a multi-tool grammar can stall some local models.
+  Every response is still parsed and validated against the exact role and tool
+  schema before a tool can execute; short diagnostics retain native structured
+  output.
+- A successful response is not proof of preferred linked-device execution.
+  Confirm routing in LM Studio and configure `lms link set-preferred-device`
+  manually if desired.
 - The threat model trusts the logged-in local user. Concurrent malicious
   same-account filesystem races and power-loss orphan prevention are residual
   risks; see the [security model](docs/security-model.md).
@@ -494,7 +505,7 @@ selected laboratory-owned configuration → safe default**.
 | `REPORTS_DIRECTORY`           | `reports/runs`          | Trusted report and lock root                   |
 
 `LM_STUDIO_BASE_URL` must be a credential-free loopback HTTP URL with no path,
-query, or fragment. `http://192.168.x.x:1234`, a hostname, a Mac IP, and a
+query, or fragment. `http://192.168.x.x:1234`, a hostname, a linked-device IP, and a
 WebSocket URL are intentionally invalid inputs.
 
 ## Development and validation
@@ -518,21 +529,199 @@ Node 24, explicit mocks, no secrets, and no live model/network dependency.
 
 ## Troubleshooting
 
-| Symptom                               | Check                                                        | Resolution                                                                                                      |
-| ------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `BASE_URL_INVALID` or a URL rejection | `npm run check:lmstudio -- --base-url http://127.0.0.1:1234` | Use exactly a loopback HTTP URL; do not use the LAN address shown by LM Studio                                  |
-| Model is not found                    | `npm run models:lmstudio`                                    | Copy the exact logical key or exact selected variant ID into `--model` / `LM_STUDIO_MODEL`                      |
-| Duplicate local and linked models     | `npm run models:lmstudio -- --json`                          | Treat them as one logical key; set LM Link's preferred device manually if routing matters                       |
-| Diagnostic inference fails            | `npm run check:lmstudio -- --inference --json`               | Confirm server/model state, use a finite output cap, and inspect sanitized output; no automatic fallback occurs |
-| Agent exits `3`                       | Read `model-diagnostics.json` and `final-result.json`        | Fix LM Studio/model availability or retry only after the server is healthy                                      |
-| Build Assistant rejects a command     | Inspect `apps/build-assistant/config/commands.example.json`  | Use a known symbolic ID or explicitly select an operator-controlled command map                                 |
-| A dry run did not change files        | Inspect `proposed-diff.patch`                                | This is expected. Re-run with `--mode apply` only after review                                                  |
-| Reports conflict with a workspace     | Choose `--reports-root` outside `--workspace`                | Report/lock roots cannot be inside the target workspace                                                         |
-| You need Mac routing confirmation     | Review LM Studio's device status and `npm run check:lmlink`  | A successful response is insufficient; confirm it in LM Studio itself                                           |
+| Symptom                                     | Check                                                        | Resolution                                                                                                      |
+| ------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `BASE_URL_INVALID` or a URL rejection       | `npm run check:lmstudio -- --base-url http://127.0.0.1:1234` | Use exactly a loopback HTTP URL; do not use the LAN address shown by LM Studio                                  |
+| Model is not found                          | `npm run models:lmstudio`                                    | Copy the exact logical key or exact selected variant ID into `--model` / `LM_STUDIO_MODEL`                      |
+| Duplicate local and linked models           | `npm run models:lmstudio -- --json`                          | Treat them as one logical key; set LM Link's preferred device manually if routing matters                       |
+| Diagnostic inference fails                  | `npm run check:lmstudio -- --inference --json`               | Confirm server/model state, use a finite output cap, and inspect sanitized output; no automatic fallback occurs |
+| Agent exits `3`                             | Read `model-diagnostics.json` and `final-result.json`        | Fix LM Studio/model availability or retry only after the server is healthy                                      |
+| Build Assistant rejects a command           | Inspect `apps/build-assistant/config/commands.example.json`  | Use a known symbolic ID or explicitly select an operator-controlled command map                                 |
+| A dry run did not change files              | Inspect `proposed-diff.patch`                                | This is expected. Re-run with `--mode apply` only after review                                                  |
+| Reports conflict with a workspace           | Choose `--reports-root` outside `--workspace`                | Report/lock roots cannot be inside the target workspace                                                         |
+| You need linked-device routing confirmation | Review LM Studio's device status and `npm run check:lmlink`  | A successful response is insufficient; confirm it in LM Studio itself                                           |
 
 For more detail, see [LM Studio setup](docs/lm-studio-setup.md),
-[LM Link setup](docs/lm-link-setup.md), [Windows-to-Mac topology](docs/windows-mac-topology.md),
+[LM Link setup](docs/lm-link-setup.md), [device topology](docs/device-topology.md),
 [LM Link troubleshooting](docs/troubleshooting-lm-link.md),
 [architecture](docs/architecture.md), and the [security model](docs/security-model.md).
+
+## End-to-end operator playbook
+
+This is the recommended sequence for a controller machine plus a linked
+inference device. It deliberately separates **connection proof**, **one
+scoped edit**, **build proof**, and **release proof**. Each command has a
+single responsibility, and each report can be inspected before proceeding.
+
+### A. Confirm the LM Link route, not a LAN connection
+
+Keep the agent on the controller machine and use its loopback address. Do **not** substitute a
+linked device's LAN address shown in LM Studio. LM Link is responsible for forwarding
+the loopback request to the preferred device.
+
+```powershell
+# Both commands are read-only. The first proves peer/preference state; the
+# second proves what the controller machine sees as loaded.
+lms link status --json
+lms ps --json
+
+# Then make one bounded application-level check.
+npm run check:lmlink -- --model openai/gpt-oss-20b --json
+```
+
+Expected signals are a connected inference peer, that device's identifier as
+`preferredDeviceIdentifier`, and an `openai/gpt-oss-20b` entry associated with
+that device. A clean diagnostic has a `PASS` inference check. If LM Studio shows
+`processingPrompt` while `queued` is zero, stop submitting new requests: cancel
+the prompt on the active inference device, then eject and reload the same model if it does not
+become idle. Re-run the diagnostic before an apply-mode agent run.
+
+`lms ps` and `lms link status` identify the selected linked device; they do not
+prove that any particular token was executed on that device. During a live
+test, also observe the active inference device in LM Studio. The laboratory
+never changes the preferred device itself. If you need to change it, use LM
+Studio or `lms link set-preferred-device` manually and then repeat this section.
+
+> [!WARNING]
+> Let a live agent process reach its own configured deadline or interrupt it
+> with `Ctrl+C`; do not use an external supervisor with a shorter hard-kill
+> timeout. A forced process termination can prevent the SDK cancellation from
+> reaching LM Studio, leaving a stale `processingPrompt` request that has no
+> usable request ID to cancel. If that happens, wait for it to complete or
+> clear it in LM Studio before submitting another model turn.
+
+### B. Edit one file with Code Editor
+
+Use a precise task that says exactly what may change. This example first plans,
+then rehearses against the overlay, and only then applies. `v2` is intentionally
+in the requested visible change so the result is easy to verify.
+
+```powershell
+$lab = "C:\Users\NolanYoung\Developer\repos\Nolan-Young-local-agent-laboratory-lmstudio"
+$testRoot = "C:\Users\NolanYoung\Developer\Sandbox\local-agent-tests"
+$reports = "C:\Users\NolanYoung\Developer\Sandbox\local-agent-reports\code-editor-v2"
+
+Set-Location $lab
+
+# 1. No target mutation: inspect and write a plan only.
+npm run code-editor -- `
+  --workspace $testRoot `
+  --task "Inspect home.php only. Plan a minimal visible v2 label and one small readability improvement; preserve PHP behavior." `
+  --mode plan-only `
+  --model openai/gpt-oss-20b `
+  --reports-root $reports
+
+# 2. No target mutation: execute editor/reviewer against the overlay.
+npm run code-editor -- `
+  --workspace $testRoot `
+  --task "Edit home.php only. Add a minimal visible v2 label and one small readability improvement. Preserve all PHP behavior and existing links." `
+  --mode dry-run `
+  --model openai/gpt-oss-20b `
+  --reports-root $reports
+
+# Read proposed-diff.patch and review-report.md in the newest run directory.
+
+# 3. Mutate only after the dry-run diff is acceptable.
+npm run code-editor -- `
+  --workspace $testRoot `
+  --task "Edit home.php only. Add a minimal visible v2 label and one small readability improvement. Preserve all PHP behavior and existing links." `
+  --mode apply `
+  --model openai/gpt-oss-20b `
+  --reports-root $reports
+```
+
+**What success means:** `final-result.json` has `status: "succeeded"`; the
+changed-file report lists only `home.php`; the review report has no unresolved
+findings; and the actual file visibly contains the intended `v2` change. Use
+`git diff -- C:\Users\NolanYoung\Developer\Sandbox\local-agent-tests\home.php`
+or compare the original hash recorded in the report with the new hash. If the
+model proposes any other file, reject the run rather than broadening the task.
+
+### C. Build the project with Build Assistant
+
+Build Assistant does not receive a raw command string. `build` is looked up in
+the trusted command map, so the model cannot turn this into an arbitrary shell
+operation. A clean initial build is a valid success: no repair is necessary,
+and no model turn needs to occur.
+
+```powershell
+$project = "C:\Users\NolanYoung\Developer\Sandbox\local-agent-tests\nolan-young-theme-template-01"
+$buildReports = "C:\Users\NolanYoung\Developer\Sandbox\local-agent-reports\build-assistant-v2"
+
+# Dependency installation is a separate, operator-authorized project action.
+Set-Location $project
+npm ci
+
+# The application executes only the trusted `build` command ID.
+Set-Location $lab
+npm run build-assistant -- `
+  --workspace $project `
+  --command build `
+  --mode apply `
+  --model openai/gpt-oss-20b `
+  --reports-root $buildReports `
+  --json
+```
+
+**What success means:** `status` and `initialStatus` are `succeeded`,
+`finalStatus` is `initial-command-succeeded`, `repairPasses` is `0`, and
+`changedFiles` is empty. That is the expected result for a healthy project.
+If a build fails, the agent may read only bounded diagnostic log deltas and may
+attempt at most three scoped repair/rebuild/review passes. In dry-run, it must
+say that verification was not executed—an overlay change never proves the real
+workspace now builds.
+
+### D. Review and package a project with Release Engineer
+
+Release Engineer accepts projects, not only Git repositories. It requires a
+valid `package.json` name/version and expected release files, but it treats
+installed dependencies, source-control data, reports, caches, secrets, and
+old archives as excluded development material rather than release contents.
+
+```powershell
+$releaseReports = "C:\Users\NolanYoung\Developer\Sandbox\local-agent-reports\release-engineer-v2"
+
+# Deterministic review: no model, no source mutation, no Git requirement.
+npm run release-engineer -- check `
+  --workspace $project `
+  --mode apply `
+  --reports-root $releaseReports `
+  --json
+
+# Validate exactly what would be packaged without writing a ZIP/checksum.
+npm run release-engineer -- package `
+  --workspace $project `
+  --mode dry-run `
+  --reports-root $releaseReports `
+  --json
+
+# Only when the manifest is approved, emit a deterministic archive in reports.
+npm run release-engineer -- package `
+  --workspace $project `
+  --mode apply `
+  --reports-root $releaseReports
+```
+
+**What success means:** `checks.passed` is `true`, findings are empty, and the
+reported project name/version match `package.json`. In dry-run, there must be
+no ZIP or checksum. In apply mode, the ZIP is created only below the trusted
+report root, is inspected after creation, contains deterministic sorted entries,
+and includes a SHA-256 checksum. No action publishes, tags, commits, pushes, or
+creates a hosted release.
+
+## How to judge a completed run
+
+Use this compact comparison after each agent:
+
+| Agent            | Expected healthy outcome                                            | Evidence to inspect                                                             | Failure that must not be called success                                                          |
+| ---------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Code Editor      | Only requested file(s) changed; reviewer accepts result             | `proposed-diff.patch`, `changed-files.json`, `review-report.md`, real file diff | A plan/dry-run, a timeout, a rejected review, or an edit outside scope                           |
+| Build Assistant  | Trusted build exits successfully without repair                     | JSON `initialStatus`, `finalStatus`, `process-log` metadata                     | A proposed overlay repair, unresolved build, watcher crash, or model outage during needed repair |
+| Release Engineer | Deterministic policy passes; planned/created archive matches policy | `check-results.json`, manifest, inspection, checksum, final report              | A passing model opinion when deterministic checks still fail                                     |
+
+The final report is a summary, not the only evidence. For an apply-mode source
+change, always inspect the actual diff. For a build, inspect the trusted command
+status. For a release, inspect the deterministic findings and manifest. This
+keeps a fluent model explanation from being mistaken for successful work.
 
 Licensed under the [MIT License](LICENSE).

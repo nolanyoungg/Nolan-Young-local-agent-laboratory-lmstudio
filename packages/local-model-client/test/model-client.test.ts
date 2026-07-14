@@ -69,6 +69,40 @@ describe("LMStudioModelClient SDK transport", () => {
     expect(result.transport).toBe("sdk");
     expect(sdk.initializedUrl).toBe("ws://127.0.0.1:1234");
     expect(sdk.calls[0]).toMatchObject({ maxTokens: 4_096 });
+    expect(sdk.calls[0]?.structuredOutput).toBe(true);
+  });
+
+  it("allows agent turns to opt out of SDK constrained decoding while preserving local validation", async () => {
+    const sdk = new ScriptedSdk([{ content: '{"answer":"plain-json"}' }]);
+    const client = new LMStudioModelClient(createLMStudioConnectionConfig({ maxRetries: 0 }), {
+      fetch: modelsFetch(),
+      sdk,
+    });
+
+    const result = await client.complete(
+      { messages: [{ role: "user", content: "answer" }], structuredOutput: false },
+      outputSchema,
+    );
+
+    expect(result.value).toEqual({ answer: "plain-json" });
+    expect(sdk.calls[0]?.structuredOutput).toBe(false);
+  });
+
+  it("extracts the final JSON value from reasoning-model prose before validation", async () => {
+    const sdk = new ScriptedSdk([
+      { content: 'I will answer with JSON.\n```json\n{"answer":"extracted"}\n```' },
+    ]);
+    const client = new LMStudioModelClient(createLMStudioConnectionConfig({ maxRetries: 0 }), {
+      fetch: modelsFetch(),
+      sdk,
+    });
+
+    await expect(
+      client.complete(
+        { messages: [{ role: "user", content: "answer" }], structuredOutput: false },
+        outputSchema,
+      ),
+    ).resolves.toMatchObject({ value: { answer: "extracted" } });
   });
 
   it("uses an exact selected variant ID for SDK loading and inference", async () => {

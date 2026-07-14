@@ -85,6 +85,7 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
   public constructor(private readonly options: AgentLoopOptions<TFinal>) {
     this.parser = new StructuredResponseParser<TFinal>(
       options.finalSchema as unknown as z.AnyZodObject,
+      options.tools.schemasFor(options.allowedTools),
     );
     this.permissions = new ToolPermissionGuard(options.allowedTools);
     this.stepLimiter = new StepLimiter(options.maximumSteps);
@@ -94,6 +95,11 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
     );
     this.retryPolicy = options.retryPolicy ?? new RetryPolicy(0, 0);
     this.conversation.append({ role: "system", content: options.systemPrompt, critical: true });
+    this.conversation.append({
+      role: "system",
+      critical: true,
+      content: `RESPONSE PROTOCOL: Return exactly one direct JSON object and no prose or Markdown. A tool turn must be {"kind":"tool_call","callId":"unique-id","tool":"one_allowed_tool","input":{...}}. A final turn must be {"kind":"complete",...required_role_fields}. Use only these tools: ${options.allowedTools.join(", ")}.`,
+    });
     this.conversation.append({ role: "user", content: options.task, critical: true });
   }
 
@@ -101,6 +107,7 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
     let toolCalls = 0;
     let replayedToolCalls = 0;
     let consecutiveReplays = 0;
+    let malformedResponseRepairs = 0;
     await this.options.trace?.record({
       type: "agent",
       status: "started",
@@ -129,7 +136,7 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
       });
 
       const response = await this.retryPolicy.execute(
-        () => this.options.modelClient.complete<AgentTurn<TFinal>>(request, this.parser.schema),
+        () => this.options.modelClient.complete<unknown>(request, this.parser.schema),
         this.options.shouldRetryModelError ?? (() => true),
         async ({ attempt, delayMs }) => {
           await this.options.trace?.record({
@@ -142,7 +149,48 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
           });
         },
       );
-      const turn = this.parser.parse(response.parsed);
+      let turn: AgentTurn<TFinal>;
+      try {
+        turn = this.parser.parse(response.parsed, {
+          rawContent: response.content,
+          harmonyCallId: `${this.options.agentId}-${step}`,
+        });
+      } catch (error) {
+        if (
+          error instanceof AgentRuntimeError &&
+          error.code === "INVALID_MODEL_RESPONSE" &&
+          malformedResponseRepairs < 2
+        ) {
+          malformedResponseRepairs += 1;
+          const issues = Array.isArray(error.details["issues"])
+            ? error.details["issues"].slice(0, 8).flatMap((issue) => {
+                if (typeof issue !== "object" || issue === null || Array.isArray(issue)) return [];
+                const path = (issue as Record<string, unknown>)["path"];
+                return typeof path === "string" && path.length > 0 ? [path.slice(0, 128)] : [];
+              })
+            : [];
+          await this.options.trace?.record({
+            type: "model_response_repair",
+            status: "scheduled",
+            runId: this.options.runId,
+            agentId: this.options.agentId,
+            step,
+            metadata: {
+              attempt: malformedResponseRepairs,
+              errorCode: error.code,
+              issuePaths: issues,
+            },
+          });
+          this.conversation.append({
+            role: "user",
+            critical: true,
+            content:
+              "Your previous response was rejected before any tool ran. Return exactly one corrected JSON tool-call or completion object with every required field. Do not repeat a prior callId.",
+          });
+          continue;
+        }
+        throw error;
+      }
       await this.options.trace?.record({
         type: "model_request",
         status: "completed",

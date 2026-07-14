@@ -21,6 +21,27 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+function isExcludedDevelopmentRoot(path: string): boolean {
+  const first = path.split("/", 1)[0]?.toLowerCase();
+  return [
+    ".git",
+    "node_modules",
+    "reports",
+    "coverage",
+    ".cache",
+    ".npm",
+    ".pnpm-store",
+    ".yarn",
+    ".ssh",
+  ].includes(first ?? "");
+}
+
+function requiredFileAlternatives(requiredFile: string): readonly string[] {
+  return requiredFile === "LICENSE"
+    ? ["LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING", "COPYING.txt"]
+    : [requiredFile];
+}
+
 export class ReleaseChecker {
   public constructor(private readonly policy: CheckPolicy) {}
 
@@ -46,7 +67,10 @@ export class ReleaseChecker {
           ),
         );
       }
-      if (matchesAnyGlob(entry.path, this.policy.forbiddenGlobs)) {
+      if (
+        matchesAnyGlob(entry.path, this.policy.forbiddenGlobs) &&
+        !isExcludedDevelopmentRoot(entry.path)
+      ) {
         findings.push(
           finding("FORBIDDEN_WORKSPACE_ENTRY", "A forbidden release entry is present.", entry.path),
         );
@@ -54,12 +78,15 @@ export class ReleaseChecker {
     }
 
     for (const requiredFile of this.policy.requiredFiles) {
-      const entry = await snapshot.entry(requiredFile);
-      if (entry === undefined || entry.kind !== "file") {
+      const alternatives = requiredFileAlternatives(requiredFile);
+      const entriesForRequirement = await Promise.all(
+        alternatives.map((candidate) => snapshot.entry(candidate)),
+      );
+      if (!entriesForRequirement.some((entry) => entry?.kind === "file")) {
         findings.push(
           finding(
             "REQUIRED_FILE_MISSING",
-            `Required release file is missing: ${requiredFile}`,
+            `Required release file is missing: ${alternatives.join(" or ")}`,
             requiredFile,
           ),
         );

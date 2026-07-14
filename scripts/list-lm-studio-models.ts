@@ -8,7 +8,7 @@ import {
 
 const HELP = `Usage: npm run --silent models:lmstudio -- [options]
 
-Lists model identifiers visible through the Windows-local LM Studio endpoint.
+Lists model identifiers visible through the local LM Studio endpoint.
 
 Options:
   --base-url <url>  Override LM_STUDIO_BASE_URL (loopback HTTP only)
@@ -32,7 +32,7 @@ async function main(): Promise<number> {
           {
             endpoint: client.config.baseUrl,
             models,
-            note: "Remote Mac execution requires confirmation in LM Studio.",
+            note: "Preferred linked-device execution requires confirmation in LM Studio.",
           },
           undefined,
           2,
@@ -57,7 +57,7 @@ async function main(): Promise<number> {
         `  source/device: ${model.source ?? "not reported"} / ${model.device ?? "not reported"}\n\n`,
       );
     }
-    process.stdout.write("Remote Mac execution requires confirmation in LM Studio.\n");
+    process.stdout.write("Preferred linked-device execution requires confirmation in LM Studio.\n");
     return CLI_EXIT.success;
   } catch (error) {
     printSafeCliError(error, json);

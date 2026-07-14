@@ -5,7 +5,7 @@ configuration value, model response, tool request, trace event, and workflow res
 parsed with its exported Zod schema before it is trusted.
 
 The package deliberately permits only the `lmstudio` runtime provider and the deterministic
-`mock` test provider. LM Studio endpoints are restricted to the Windows loopback interface and
+`mock` test provider. LM Studio endpoints are restricted to the local loopback interface and
 embedded URL credentials are rejected.
 
 ```ts

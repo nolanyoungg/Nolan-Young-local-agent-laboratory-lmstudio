@@ -61,7 +61,7 @@ export class LMStudioHealthCheck {
       checks.push({
         name: "server-greeting",
         status: "PASS",
-        message: "The Windows-local LM Studio server greeting responded.",
+        message: "The local LM Studio server greeting responded.",
         durationMs: greeting.durationMs,
       });
     } catch (error) {
@@ -130,7 +130,7 @@ export class LMStudioHealthCheck {
     checks.push({
       name: "api-reachability",
       status: "PASS",
-      message: "Native /api/v1/models responded through Windows localhost.",
+      message: "Native /api/v1/models responded through the local loopback endpoint.",
       durationMs: health.durationMs,
     });
     checks.push({
@@ -198,8 +198,8 @@ export class LMStudioHealthCheck {
           status: "WARNING",
           message:
             resolved.variants.length > 1
-              ? "Multiple physical variants share this model key. Confirm the Mac is preferred in LM Studio; a Windows-local duplicate may otherwise be selected. Remote Mac execution requires confirmation in LM Studio."
-              : "Remote Mac execution requires confirmation in LM Studio.",
+              ? "Multiple physical variants share this model key. Set the desired inference device as preferred in LM Studio; a controller-local duplicate may otherwise be selected. Preferred linked-device execution requires confirmation in LM Studio."
+              : "Preferred linked-device execution requires confirmation in LM Studio.",
         });
       } catch (error) {
         checks.push({

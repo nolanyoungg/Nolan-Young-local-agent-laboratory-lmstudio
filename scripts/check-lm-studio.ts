@@ -11,7 +11,7 @@ import {
 
 const HELP = `Usage: npm run --silent check:lmstudio -- [options]
 
-Checks the Windows-local LM Studio control plane and configured model.
+Checks the local LM Studio control plane and configured model.
 
 Options:
   --base-url <url>  Override LM_STUDIO_BASE_URL (loopback HTTP only)

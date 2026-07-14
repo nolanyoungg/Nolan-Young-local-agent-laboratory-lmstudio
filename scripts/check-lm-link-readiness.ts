@@ -11,8 +11,8 @@ import {
 
 const HELP = `Usage: npm run --silent check:lmlink -- [options]
 
-Verifies the observable Windows-local LM Studio path and prints the manual LM Link checklist.
-This command never changes LM Link settings and never treats a successful response as proof of Mac execution.
+Verifies the observable local LM Studio path and prints the manual LM Link checklist.
+This command never changes LM Link settings and never treats a successful response as proof of preferred linked-device execution.
 
 Options:
   --base-url <url>  Override LM_STUDIO_BASE_URL (loopback HTTP only)
@@ -22,11 +22,11 @@ Options:
 `;
 
 const MANUAL_CHECKLIST = [
-  "Open LM Studio on Windows.",
+  "Open LM Studio on the controller machine.",
   "Open LM Link.",
-  "Confirm the Mac is connected.",
-  "Confirm the Mac is set as the preferred device.",
-  "Confirm the selected model is associated with the Mac.",
+  "Confirm the desired inference device is connected.",
+  "Set the desired inference device as preferred.",
+  "Confirm the selected model is associated with that device.",
   "Observe the active inference device during the test request.",
 ] as const;
 
@@ -54,8 +54,8 @@ async function main(): Promise<number> {
       conclusions: {
         lmStudioPathVerified: summary.ok,
         modelInferenceVerified: inferenceVerified,
-        remoteMacExecutionVerified: false,
-        message: "Remote Mac execution requires confirmation in LM Studio.",
+        preferredLinkedDeviceExecutionVerified: false,
+        message: "Preferred linked-device execution requires confirmation in LM Studio.",
       },
     };
     if (options.json) {
@@ -79,7 +79,9 @@ async function main(): Promise<number> {
       process.stdout.write(
         inferenceVerified ? "Model inference verified.\n" : "Model inference not verified.\n",
       );
-      process.stdout.write("Remote Mac execution requires confirmation in LM Studio.\n");
+      process.stdout.write(
+        "Preferred linked-device execution requires confirmation in LM Studio.\n",
+      );
     }
     return summary.ok && inferenceVerified ? CLI_EXIT.success : CLI_EXIT.infrastructure;
   } catch (error) {

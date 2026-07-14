@@ -17,6 +17,7 @@ export const ModelCompletionRequestSchema = z
     model: z.string().trim().min(1).max(512).optional(),
     temperature: z.number().min(0).max(2).optional(),
     maxTokens: z.number().int().min(1).max(32_768).optional(),
+    structuredOutput: z.boolean().optional(),
   })
   .strict();
 

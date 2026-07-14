@@ -34,7 +34,7 @@ export const LMStudioBaseUrlSchema = z
     if (!isLoopback) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "LM Studio URL must use the Windows loopback interface",
+        message: "LM Studio URL must use the local loopback interface",
       });
     }
     if (url.username.length > 0 || url.password.length > 0) {

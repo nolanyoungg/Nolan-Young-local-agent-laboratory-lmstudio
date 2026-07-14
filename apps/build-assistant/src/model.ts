@@ -38,6 +38,7 @@ export class LocalRuntimeModelAdapter implements RuntimeModelClient {
         model: request.model,
         temperature: request.temperature,
         maxTokens: request.maxOutputTokens,
+        structuredOutput: false,
         ...(this.signal === undefined ? {} : { signal: this.signal }),
       },
       outputSchema,
@@ -153,7 +154,17 @@ export class BuildAssistantMockModelClient implements RuntimeModelClient {
         };
       }
     }
-    const parsed = outputSchema.safeParse(value);
+    const direct = outputSchema.safeParse(value);
+    const parsed = direct.success
+      ? direct
+      : outputSchema.safeParse({
+          kind: (value as { kind?: unknown }).kind,
+          payload: JSON.stringify(
+            Object.fromEntries(
+              Object.entries(value as Record<string, unknown>).filter(([key]) => key !== "kind"),
+            ),
+          ),
+        });
     if (!parsed.success) {
       throw new ModelClientError(
         ModelClientErrorCode.malformedResponse,

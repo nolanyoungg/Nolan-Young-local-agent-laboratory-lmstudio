@@ -2,7 +2,7 @@
 
 ## 1. Install prerequisites
 
-Install Node.js 24 LTS and npm 11. Install current LM Studio on Windows. If remote inference is desired, install LM Studio or `llmster` on the Mac and complete [LM Link setup](lm-link-setup.md).
+Install Node.js 24 LTS and npm 11 on the controller machine. Install current LM Studio locally. If linked-device inference is desired, install LM Studio or `llmster` on the desired inference device and complete [LM Link setup](lm-link-setup.md).
 
 ## 2. Install and validate
 
@@ -15,7 +15,7 @@ The intentionally broken example is not an npm workspace and cannot fail root va
 
 ## 3. Inspect visible models
 
-Start the LM Studio server on Windows, bound to localhost, then run:
+Start the local LM Studio server on the controller machine, bound to localhost, then run:
 
 ```bash
 npm run models:lmstudio

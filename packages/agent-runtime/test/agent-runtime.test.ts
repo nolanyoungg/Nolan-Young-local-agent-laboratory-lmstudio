@@ -22,7 +22,19 @@ class ScriptedClient implements RuntimeModelClient {
     outputSchema: z.ZodType<T>,
   ): Promise<RuntimeModelResponse<T>> {
     const response = this.responses.shift();
-    const parsed = outputSchema.parse(response);
+    const direct = outputSchema.safeParse(response);
+    if (direct.success) return { parsed: direct.data, content: JSON.stringify(response) };
+    if (typeof response !== "object" || response === null || Array.isArray(response)) {
+      throw direct.error;
+    }
+    const parsed = outputSchema.parse({
+      kind: (response as { kind?: unknown }).kind,
+      payload: JSON.stringify(
+        Object.fromEntries(
+          Object.entries(response as Record<string, unknown>).filter(([key]) => key !== "kind"),
+        ),
+      ),
+    });
     return { parsed, content: JSON.stringify(response) };
   }
 }
@@ -228,6 +240,61 @@ describe("agent runtime", () => {
     const parser = new StructuredResponseParser(finalSchema);
     expect(() => parser.parse({ kind: "tool_call", tool: "read_file" })).toThrow(AgentRuntimeError);
     expect(() => new ToolPermissionGuard([]).assertAllowed("read_file")).toThrow(AgentRuntimeError);
+  });
+
+  it("strictly validates a direct JSON tool turn before it reaches the registry", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      { name: "read_file", inputSchema: z.object({ path: z.string() }).strict() },
+    ]);
+    expect(
+      parser.parse({
+        kind: "tool_call",
+        callId: "direct-one",
+        tool: "read_file",
+        input: { path: "a.ts" },
+      }),
+    ).toEqual({
+      kind: "tool_call",
+      callId: "direct-one",
+      tool: "read_file",
+      input: { path: "a.ts" },
+    });
+    expect(() => parser.parse({ kind: "complete", summary: "missing" })).toThrow(AgentRuntimeError);
+  });
+
+  it("adapts a Harmony tool call before strict local validation", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      {
+        name: "list_files",
+        inputSchema: z.object({ path: z.string(), recursive: z.boolean() }).strict(),
+      },
+    ]);
+    expect(
+      parser.parse(
+        { path: ".", recursive: false },
+        {
+          harmonyCallId: "planner-1",
+          rawContent:
+            '<|channel|>analysis<|message|>inspect<|end|><|start|>assistant<|channel|>commentary to=tool_call_list_files <|constrain|>json<|message|>{"path":".","recursive":false}',
+        },
+      ),
+    ).toEqual({
+      kind: "tool_call",
+      callId: "planner-1",
+      tool: "list_files",
+      input: { path: ".", recursive: false },
+    });
+  });
+
+  it("repairs a malformed JSON response without executing a tool", async () => {
+    const tools = new ToolRegistry();
+    const client = new ScriptedClient([
+      { kind: "complete" },
+      { kind: "complete", summary: "recovered", evidence: [], findings: [] },
+    ]);
+    const result = await baseLoop(client, tools).run();
+    expect(result.toolCalls).toBe(0);
+    expect(result.final["summary"]).toBe("recovered");
   });
 
   it("enforces the step limit", () => {
