@@ -88,10 +88,7 @@ export class StructuredResponseParser<TFinal extends Readonly<Record<string, unk
       if (harmonyResult.success) return harmonyResult.data;
       return this.invalid(harmonyResult.error.issues);
     }
-    if (!result.success) {
-      return this.invalid(result.error.issues);
-    }
-    return result.data;
+    return this.invalid(result.error.issues);
   }
 
   private parseHarmonyToolCall(context: ModelParseContext): AgentToolCallTurn | undefined {
