@@ -8,6 +8,7 @@ import {
   StructuredResponseParser,
   type AgentCompleteTurn,
   type AgentTurn,
+  type ModelWireTurn,
 } from "./StructuredResponseParser.js";
 import { ToolPermissionGuard } from "./ToolPermissionGuard.js";
 import type { ToolRegistry } from "./ToolRegistry.js";
@@ -59,7 +60,6 @@ export interface AgentLoopOptions<TFinal extends Readonly<Record<string, unknown
   readonly maximumSteps: number;
   readonly allowedTools: readonly string[];
   readonly finalSchema: z.ZodType<TFinal>;
-  readonly transportFinalSchema?: z.ZodType<TFinal>;
   readonly dryRun: boolean;
   readonly modelClient: RuntimeModelClient;
   readonly tools: ToolRegistry;
@@ -87,7 +87,6 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
     this.parser = new StructuredResponseParser<TFinal>(
       options.finalSchema as unknown as z.AnyZodObject,
       options.tools.schemasFor(options.allowedTools),
-      options.transportFinalSchema as z.AnyZodObject | undefined,
     );
     this.permissions = new ToolPermissionGuard(options.allowedTools);
     this.stepLimiter = new StepLimiter(options.maximumSteps);
@@ -97,6 +96,12 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
     );
     this.retryPolicy = options.retryPolicy ?? new RetryPolicy(0, 0);
     this.conversation.append({ role: "system", content: options.systemPrompt, critical: true });
+    this.conversation.append({
+      role: "system",
+      critical: true,
+      content:
+        'MODEL OUTPUT WIRE PROTOCOL: This overrides any earlier response-shape examples. Return exactly one object matching {"kind":"tool_call"|"complete","payload":"..."}. payload must be a JSON-encoded object string. For tool_call payload use {"callId":"...","tool":"...","input":{...}}. For complete payload use the role completion fields, without kind. No prose.',
+    });
     this.conversation.append({ role: "user", content: options.task, critical: true });
   }
 
@@ -104,6 +109,7 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
     let toolCalls = 0;
     let replayedToolCalls = 0;
     let consecutiveReplays = 0;
+    let malformedResponseRepairs = 0;
     await this.options.trace?.record({
       type: "agent",
       status: "started",
@@ -132,7 +138,7 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
       });
 
       const response = await this.retryPolicy.execute(
-        () => this.options.modelClient.complete<AgentTurn<TFinal>>(request, this.parser.schema),
+        () => this.options.modelClient.complete<ModelWireTurn>(request, this.parser.schema),
         this.options.shouldRetryModelError ?? (() => true),
         async ({ attempt, delayMs }) => {
           await this.options.trace?.record({
@@ -145,7 +151,45 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
           });
         },
       );
-      const turn = this.parser.parse(response.parsed);
+      let turn: AgentTurn<TFinal>;
+      try {
+        turn = this.parser.parse(response.parsed);
+      } catch (error) {
+        if (
+          error instanceof AgentRuntimeError &&
+          error.code === "INVALID_MODEL_RESPONSE" &&
+          malformedResponseRepairs < 2
+        ) {
+          malformedResponseRepairs += 1;
+          const issues = Array.isArray(error.details["issues"])
+            ? error.details["issues"].slice(0, 8).flatMap((issue) => {
+                if (typeof issue !== "object" || issue === null || Array.isArray(issue)) return [];
+                const path = (issue as Record<string, unknown>)["path"];
+                return typeof path === "string" && path.length > 0 ? [path.slice(0, 128)] : [];
+              })
+            : [];
+          await this.options.trace?.record({
+            type: "model_response_repair",
+            status: "scheduled",
+            runId: this.options.runId,
+            agentId: this.options.agentId,
+            step,
+            metadata: {
+              attempt: malformedResponseRepairs,
+              errorCode: error.code,
+              issuePaths: issues,
+            },
+          });
+          this.conversation.append({
+            role: "user",
+            critical: true,
+            content:
+              "Your previous response was rejected before any tool ran. Return a corrected MODEL OUTPUT WIRE PROTOCOL object only. payload must be a JSON-encoded object string with every required field. Do not repeat a prior callId.",
+          });
+          continue;
+        }
+        throw error;
+      }
       await this.options.trace?.record({
         type: "model_request",
         status: "completed",

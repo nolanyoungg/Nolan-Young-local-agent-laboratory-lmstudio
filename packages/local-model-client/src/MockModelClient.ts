@@ -94,15 +94,31 @@ export class MockModelClient implements LocalModelClient {
       throw step.error;
     }
     const parsed = outputSchema.safeParse(step.value);
-    if (!parsed.success) {
+    const wrapped =
+      parsed.success ||
+      typeof step.value !== "object" ||
+      step.value === null ||
+      Array.isArray(step.value)
+        ? parsed
+        : outputSchema.safeParse({
+            kind: (step.value as { kind?: unknown }).kind,
+            payload: JSON.stringify(
+              Object.fromEntries(
+                Object.entries(step.value as Record<string, unknown>).filter(
+                  ([key]) => key !== "kind",
+                ),
+              ),
+            ),
+          });
+    if (!wrapped.success) {
       throw new ModelClientError(
         ModelClientErrorCode.malformedResponse,
         "The scripted mock response does not match the requested output schema.",
       );
     }
     return {
-      value: parsed.data,
-      content: step.content ?? JSON.stringify(parsed.data),
+      value: wrapped.data,
+      content: step.content ?? JSON.stringify(wrapped.data),
       model: step.model ?? this.#models[0]?.logicalKey ?? "mock/coder",
       transport: "mock",
       attempts: 1,

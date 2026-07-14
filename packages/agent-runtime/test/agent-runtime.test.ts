@@ -22,7 +22,19 @@ class ScriptedClient implements RuntimeModelClient {
     outputSchema: z.ZodType<T>,
   ): Promise<RuntimeModelResponse<T>> {
     const response = this.responses.shift();
-    const parsed = outputSchema.parse(response);
+    const direct = outputSchema.safeParse(response);
+    if (direct.success) return { parsed: direct.data, content: JSON.stringify(response) };
+    if (typeof response !== "object" || response === null || Array.isArray(response)) {
+      throw direct.error;
+    }
+    const parsed = outputSchema.parse({
+      kind: (response as { kind?: unknown }).kind,
+      payload: JSON.stringify(
+        Object.fromEntries(
+          Object.entries(response as Record<string, unknown>).filter(([key]) => key !== "kind"),
+        ),
+      ),
+    });
     return { parsed, content: JSON.stringify(response) };
   }
 }
@@ -228,6 +240,37 @@ describe("agent runtime", () => {
     const parser = new StructuredResponseParser(finalSchema);
     expect(() => parser.parse({ kind: "tool_call", tool: "read_file" })).toThrow(AgentRuntimeError);
     expect(() => new ToolPermissionGuard([]).assertAllowed("read_file")).toThrow(AgentRuntimeError);
+  });
+
+  it("unwraps the compact model wire envelope before strict local validation", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      { name: "read_file", inputSchema: z.object({ path: z.string() }).strict() },
+    ]);
+    expect(
+      parser.parse({
+        kind: "tool_call",
+        payload: JSON.stringify({ callId: "wire-one", tool: "read_file", input: { path: "a.ts" } }),
+      }),
+    ).toEqual({
+      kind: "tool_call",
+      callId: "wire-one",
+      tool: "read_file",
+      input: { path: "a.ts" },
+    });
+    expect(() =>
+      parser.parse({ kind: "complete", payload: JSON.stringify({ summary: "missing" }) }),
+    ).toThrow(AgentRuntimeError);
+  });
+
+  it("repairs a malformed wire response without executing a tool", async () => {
+    const tools = new ToolRegistry();
+    const client = new ScriptedClient([
+      { kind: "complete", payload: "{}" },
+      { kind: "complete", summary: "recovered", evidence: [], findings: [] },
+    ]);
+    const result = await baseLoop(client, tools).run();
+    expect(result.toolCalls).toBe(0);
+    expect(result.final["summary"]).toBe("recovered");
   });
 
   it("enforces the step limit", () => {

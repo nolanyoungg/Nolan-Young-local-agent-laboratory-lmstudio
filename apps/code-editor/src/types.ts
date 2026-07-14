@@ -36,25 +36,6 @@ export const PlannerFinalSchema = z
 
 export type PlannerFinal = z.infer<typeof PlannerFinalSchema>;
 
-// LM Studio constrained decoding compiles schema limits into its grammar. Keep
-// the transport shape intentionally compact, then revalidate the parsed result
-// with the bounded final schema above before accepting it.
-export const PlannerTransportFinalSchema = z
-  .object({
-    summary: z.string(),
-    evidence: z.array(z.string()),
-    findings: z.array(z.string()),
-    changePlan: z.array(
-      z.object({
-        action: z.string(),
-        path: z.string().optional(),
-        rationale: z.string(),
-        acceptanceCriteria: z.array(z.string()),
-      }),
-    ),
-  })
-  .strict();
-
 export const EditorFinalSchema = z
   .object({
     summary: z.string().min(1).max(32_768),
@@ -65,15 +46,6 @@ export const EditorFinalSchema = z
   .strict();
 
 export type EditorFinal = z.infer<typeof EditorFinalSchema>;
-
-export const EditorTransportFinalSchema = z
-  .object({
-    summary: z.string(),
-    evidence: z.array(z.string()),
-    findings: z.array(z.string()),
-    changedFiles: z.array(z.string()),
-  })
-  .strict();
 
 export const ReviewFindingSchema = z
   .object({
@@ -94,22 +66,6 @@ export const ReviewerFinalSchema = z
   .strict();
 
 export type ReviewerFinal = z.infer<typeof ReviewerFinalSchema>;
-
-export const ReviewerTransportFinalSchema = z
-  .object({
-    summary: z.string(),
-    evidence: z.array(z.string()),
-    findings: z.array(
-      z.object({
-        severity: z.enum(["info", "warning", "error"]),
-        message: z.string(),
-        evidence: z.array(z.string()),
-      }),
-    ),
-    approved: z.boolean(),
-    requiredChanges: z.array(z.string()),
-  })
-  .strict();
 
 export const PermissionsSchema = z
   .object({

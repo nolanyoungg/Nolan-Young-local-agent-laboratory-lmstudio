@@ -15,6 +15,23 @@ export type AgentCompleteTurn<TFinal extends Readonly<Record<string, unknown>>> 
 export type AgentTurn<TFinal extends Readonly<Record<string, unknown>>> =
   AgentToolCallTurn | AgentCompleteTurn<TFinal>;
 
+/**
+ * Deliberately small model-facing envelope.  Some local constrained decoders
+ * struggle to compile the full protocol union (one branch per authorized
+ * tool).  The JSON payload is decoded and validated against the full strict
+ * protocol before it is allowed to reach the tool registry.
+ */
+export const ModelWireTurnSchema = z
+  .object({
+    kind: z.enum(["tool_call", "complete"]),
+    // Keep the server grammar as simple as possible. The decoded protocol is
+    // bounded separately by its strict local schemas and the model max tokens.
+    payload: z.string(),
+  })
+  .strict();
+
+export type ModelWireTurn = z.infer<typeof ModelWireTurnSchema>;
+
 const ToolCallTurnSchema = z
   .object({
     kind: z.literal("tool_call"),
@@ -45,20 +62,11 @@ function toolCallSchema(tool: StructuredToolSchema): z.AnyZodObject {
 }
 
 export class StructuredResponseParser<TFinal extends Readonly<Record<string, unknown>>> {
-  public readonly schema: z.ZodType<AgentTurn<TFinal>>;
+  public readonly schema: z.ZodType<ModelWireTurn> = ModelWireTurnSchema;
   private readonly validationSchema: z.ZodType<AgentTurn<TFinal>>;
 
-  public constructor(
-    finalSchema: z.AnyZodObject,
-    tools: readonly StructuredToolSchema[] = [],
-    transportFinalSchema: z.AnyZodObject = finalSchema,
-  ) {
-    // A discriminated union is materially simpler than a general union for LM Studio's
-    // structured-output grammar.  The old union made the server explore both large
-    // branches while it generated `kind`, which can leave constrained generation
-    // apparently stuck before emitting a token on some models.
+  public constructor(finalSchema: z.AnyZodObject, tools: readonly StructuredToolSchema[] = []) {
     this.validationSchema = this.createTurnSchema(finalSchema, tools);
-    this.schema = this.createTurnSchema(transportFinalSchema, tools);
   }
 
   private createTurnSchema(
@@ -75,15 +83,42 @@ export class StructuredResponseParser<TFinal extends Readonly<Record<string, unk
   }
 
   public parse(value: unknown): AgentTurn<TFinal> {
-    const result = this.validationSchema.safeParse(value);
-    if (!result.success) {
-      throw new AgentRuntimeError("INVALID_MODEL_RESPONSE", "Model response failed validation", {
-        issues: result.error.issues.map((issue) => ({
-          path: issue.path.join("."),
-          message: issue.message,
-        })),
+    // Preserve direct validation for internal callers and backwards-compatible
+    // deterministic test scripts. Live model responses use the wire envelope.
+    const direct = this.validationSchema.safeParse(value);
+    if (direct.success) return direct.data;
+
+    const wire = this.schema.safeParse(value);
+    if (!wire.success) {
+      return this.invalid(wire.error.issues);
+    }
+    let payload: unknown;
+    try {
+      payload = JSON.parse(wire.data.payload) as unknown;
+    } catch {
+      throw new AgentRuntimeError("INVALID_MODEL_RESPONSE", "Model wire payload was not JSON", {
+        issues: [{ path: "payload", message: "Expected a JSON object encoded as a string." }],
       });
     }
+    if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+      throw new AgentRuntimeError(
+        "INVALID_MODEL_RESPONSE",
+        "Model wire payload was not an object",
+        {
+          issues: [{ path: "payload", message: "Expected a JSON object encoded as a string." }],
+        },
+      );
+    }
+    const result = this.validationSchema.safeParse({ kind: wire.data.kind, ...payload });
+    if (!result.success) {
+      return this.invalid(result.error.issues);
+    }
     return result.data;
+  }
+
+  private invalid(issues: readonly z.ZodIssue[]): never {
+    throw new AgentRuntimeError("INVALID_MODEL_RESPONSE", "Model response failed validation", {
+      issues: issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+    });
   }
 }

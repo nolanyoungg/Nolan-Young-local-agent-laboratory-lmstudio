@@ -26,11 +26,8 @@ import { CodeEditorReportWriter, type CodeEditorOutcome } from "./Reports.js";
 import { createCodeEditorTools, type CodeEditorTools } from "./Tooling.js";
 import {
   EditorFinalSchema,
-  EditorTransportFinalSchema,
   PlannerFinalSchema,
-  PlannerTransportFinalSchema,
   ReviewerFinalSchema,
-  ReviewerTransportFinalSchema,
   type EditorFinal,
   type PlannerFinal,
   type ReviewerFinal,
@@ -244,7 +241,6 @@ async function runPlanner(
     systemPrompt: options.config.prompts.planner,
     allowedTools: options.config.permissions.planner,
     finalSchema: PlannerFinalSchema,
-    transportFinalSchema: PlannerTransportFinalSchema,
   };
   const result = await runner.run(definition, {
     ...commonAgentOptions(options, 16),
@@ -266,7 +262,6 @@ async function runEditor(
     systemPrompt: options.config.prompts.editor,
     allowedTools: options.config.permissions.editor,
     finalSchema: EditorFinalSchema,
-    transportFinalSchema: EditorTransportFinalSchema,
   };
   const repairInstruction =
     requiredChanges.length === 0
@@ -299,7 +294,6 @@ async function runReviewer(
     systemPrompt: options.config.prompts.reviewer,
     allowedTools: options.config.permissions.reviewer,
     finalSchema: ReviewerFinalSchema,
-    transportFinalSchema: ReviewerTransportFinalSchema,
   };
   const changedFiles = options.tools.journal.changedFiles();
   const result = await runner.run(definition, {
