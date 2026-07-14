@@ -575,6 +575,14 @@ test, also observe the active inference device in LM Studio. The laboratory
 never changes the preferred device itself. If you need to change it, use LM
 Studio or `lms link set-preferred-device` manually and then repeat this section.
 
+> [!WARNING]
+> Let a live agent process reach its own configured deadline or interrupt it
+> with `Ctrl+C`; do not use an external supervisor with a shorter hard-kill
+> timeout. A forced process termination can prevent the SDK cancellation from
+> reaching LM Studio, leaving a stale `processingPrompt` request that has no
+> usable request ID to cancel. If that happens, wait for it to complete or
+> clear it in LM Studio before submitting another model turn.
+
 ### B. Edit one file with Code Editor
 
 Use a precise task that says exactly what may change. This example first plans,
