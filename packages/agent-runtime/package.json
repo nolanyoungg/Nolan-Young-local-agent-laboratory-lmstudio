@@ -1,0 +1,28 @@
+{
+  "name": "@local-agent-lab/agent-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@local-agent-lab/local-model-client": "*",
+    "@local-agent-lab/shared-types": "*",
+    "@local-agent-lab/tracing": "*",
+    "zod": "^3.25.0"
+  }
+}

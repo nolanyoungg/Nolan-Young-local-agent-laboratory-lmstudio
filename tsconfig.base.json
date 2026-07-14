@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "baseUrl": ".",
+    "paths": {
+      "@local-agent-lab/shared-types": ["packages/shared-types/src/index.ts"],
+      "@local-agent-lab/workspace-security": ["packages/workspace-security/src/index.ts"],
+      "@local-agent-lab/filesystem-tools": ["packages/filesystem-tools/src/index.ts"],
+      "@local-agent-lab/process-tools": ["packages/process-tools/src/index.ts"],
+      "@local-agent-lab/tracing": ["packages/tracing/src/index.ts"],
+      "@local-agent-lab/local-model-client": ["packages/local-model-client/src/index.ts"],
+      "@local-agent-lab/agent-runtime": ["packages/agent-runtime/src/index.ts"]
+    },
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "forceConsistentCasingInFileNames": true,
+    "useUnknownInCatchVariables": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "incremental": true,
+    "skipLibCheck": true,
+    "noEmitOnError": true,
+    "types": ["node"]
+  }
+}

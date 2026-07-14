@@ -1,0 +1,17 @@
+node_modules/
+**/dist/
+dist-scripts/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+reports/runs/*
+!reports/runs/.gitkeep
+reports/.locks/
+workspaces/*
+!workspaces/.gitkeep
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

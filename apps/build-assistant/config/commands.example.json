@@ -1,0 +1,24 @@
+{
+  "commands": {
+    "build": {
+      "kind": "npm",
+      "args": ["run", "build"],
+      "timeoutMs": 120000
+    },
+    "test": {
+      "kind": "npm",
+      "args": ["test", "--", "--runInBand"],
+      "timeoutMs": 120000
+    },
+    "dev": {
+      "kind": "npm",
+      "args": ["run", "dev"],
+      "watcher": {
+        "readyPatterns": ["ready", "listening", "watching"],
+        "successPatterns": ["compiled successfully", "build succeeded", "found 0 errors"],
+        "failurePatterns": ["build failed", "error TS"],
+        "settleMs": 750
+      }
+    }
+  }
+}

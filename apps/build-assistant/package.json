@@ -1,0 +1,40 @@
+{
+  "name": "@local-agent-lab/build-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "bin": {
+    "local-build-assistant": "./dist/src/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "prompts",
+    "config",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/src/cli.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@local-agent-lab/agent-runtime": "*",
+    "@local-agent-lab/filesystem-tools": "*",
+    "@local-agent-lab/local-model-client": "*",
+    "@local-agent-lab/process-tools": "*",
+    "@local-agent-lab/shared-types": "*",
+    "@local-agent-lab/tracing": "*",
+    "@local-agent-lab/workspace-security": "*",
+    "dotenv": "^17.2.0",
+    "zod": "^3.25.76"
+  }
+}

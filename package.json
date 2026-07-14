@@ -1,0 +1,46 @@
+{
+  "name": "nolan-young-local-agent-laboratory-lmstudio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0 <25",
+    "npm": ">=11.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "validate": "npm run verify:workspaces && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "clean": "tsx scripts/clean-generated-data.ts",
+    "code-editor": "tsx apps/code-editor/src/cli.ts",
+    "build-assistant": "tsx apps/build-assistant/src/cli.ts",
+    "release-engineer": "tsx apps/release-engineer/src/cli.ts",
+    "check:lmstudio": "tsx scripts/check-lm-studio.ts",
+    "check:lmlink": "tsx scripts/check-lm-link-readiness.ts",
+    "models:lmstudio": "tsx scripts/list-lm-studio-models.ts",
+    "verify:workspaces": "tsx scripts/verify-workspaces.ts",
+    "smoke:mock": "tsx scripts/run-mock-smoke.ts"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.2",
+    "@types/node": "^24.0.0",
+    "@types/yauzl": "^2.10.3",
+    "@types/yazl": "^3.3.0",
+    "@typescript-eslint/eslint-plugin": "^8.38.0",
+    "@typescript-eslint/parser": "^8.38.0",
+    "dotenv": "^17.2.0",
+    "eslint": "^9.31.0",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

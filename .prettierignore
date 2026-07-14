@@ -1,0 +1,8 @@
+node_modules
+**/dist
+dist-scripts
+coverage
+reports/runs
+workspaces
+package-lock.json
+examples/sample-release-project/dist

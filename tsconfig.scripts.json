@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist-scripts",
+    "tsBuildInfoFile": "dist-scripts/.tsbuildinfo"
+  },
+  "include": ["scripts/**/*.ts"],
+  "references": [
+    { "path": "packages/shared-types" },
+    { "path": "packages/workspace-security" },
+    { "path": "packages/filesystem-tools" },
+    { "path": "packages/process-tools" },
+    { "path": "packages/tracing" },
+    { "path": "packages/local-model-client" },
+    { "path": "packages/agent-runtime" },
+    { "path": "apps/code-editor" },
+    { "path": "apps/build-assistant" },
+    { "path": "apps/release-engineer" }
+  ]
+}

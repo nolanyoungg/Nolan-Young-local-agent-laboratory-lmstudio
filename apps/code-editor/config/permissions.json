@@ -1,0 +1,13 @@
+{
+  "planner": ["list_files", "read_file", "read_file_metadata", "search_text"],
+  "editor": [
+    "list_files",
+    "read_file",
+    "read_file_metadata",
+    "search_text",
+    "create_file",
+    "write_file",
+    "apply_patch"
+  ],
+  "reviewer": ["list_files", "read_file", "read_file_metadata", "search_text"]
+}
