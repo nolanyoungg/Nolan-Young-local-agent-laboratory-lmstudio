@@ -65,6 +65,11 @@ describe("relative path validation", () => {
 });
 
 describe("read and write policy", () => {
+  it("allows read-only discovery at the workspace root by default", () => {
+    const policy = new PathPolicy();
+    expect(policy.assertAllowed(".", "read")).toBe(".");
+  });
+
   it.each([
     ".git/config",
     "nested/.git/HEAD",

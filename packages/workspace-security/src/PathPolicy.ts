@@ -226,7 +226,7 @@ export class PathPolicy {
       maxSegmentLength: options.maxSegmentLength ?? DEFAULT_MAX_PATH_SEGMENT_LENGTH,
     };
     validateLimits(this.#limits);
-    this.#readGlobs = normalizePatterns(options.readGlobs ?? ["**", "**/*"], "readGlobs");
+    this.#readGlobs = normalizePatterns(options.readGlobs ?? [".", "**", "**/*"], "readGlobs");
     this.#writeGlobs = normalizePatterns(options.writeGlobs ?? ["**", "**/*"], "writeGlobs");
     this.#deleteGlobs = normalizePatterns(options.deleteGlobs ?? [], "deleteGlobs");
     this.#forbiddenGlobs = normalizePatterns(

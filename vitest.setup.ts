@@ -1,0 +1,20 @@
+const liveModelEnvironmentVariables = [
+  "LM_STUDIO_API_KEY",
+  "LM_STUDIO_API_TOKEN",
+  "LM_STUDIO_BASE_URL",
+  "LM_STUDIO_MODEL",
+  "MODEL_CONNECTION_TIMEOUT_MS",
+  "MODEL_CONTEXT_TOKENS",
+  "MODEL_LOAD_TIMEOUT_MS",
+  "MODEL_MAX_OUTPUT_TOKENS",
+  "MODEL_PREDICTION_TIMEOUT_MS",
+  "MODEL_REQUEST_TIMEOUT_MS",
+  "MODEL_RESOLUTION_TIMEOUT_MS",
+  "MODEL_RETRIES",
+  "MODEL_RETRY_DELAY_MS",
+  "MODEL_TEMPERATURE",
+] as const;
+
+for (const name of liveModelEnvironmentVariables) {
+  delete process.env[name];
+}

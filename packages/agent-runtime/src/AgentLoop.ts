@@ -1,5 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { ContextBudget } from "./ContextBudget.js";
 import { ConversationState, type ModelMessage } from "./ConversationState.js";
 import { RetryPolicy } from "./RetryPolicy.js";
@@ -12,6 +13,41 @@ import {
 import { ToolPermissionGuard } from "./ToolPermissionGuard.js";
 import type { ToolRegistry } from "./ToolRegistry.js";
 import { AgentRuntimeError } from "./errors.js";
+
+const MAX_MALFORMED_RESPONSE_REPAIRS = 4;
+const MAX_PATCH_RECOVERY_FAILURES = 2;
+
+function toolCallFingerprint(
+  turn: AgentTurn<Readonly<Record<string, unknown>>>,
+): string | undefined {
+  if (turn.kind !== "tool_call") return undefined;
+  return createHash("sha256")
+    .update(JSON.stringify({ tool: turn.tool, input: turn.input }))
+    .digest("hex");
+}
+
+function hashPreconditionNotice(tool: string, result: unknown): string | undefined {
+  if (tool !== "read_file" || typeof result !== "object" || result === null) return undefined;
+  const output = (result as Readonly<Record<string, unknown>>)["output"];
+  if (typeof output !== "object" || output === null || Array.isArray(output)) return undefined;
+  const record = output as Readonly<Record<string, unknown>>;
+  const path = record["path"];
+  const sha256 = record["sha256"];
+  if (typeof path !== "string" || typeof sha256 !== "string") return undefined;
+  return `HASH PRECONDITION: The observed SHA-256 for ${JSON.stringify(path)} is ${sha256}. Any later write_file or apply_patch for this path must copy this exact value into expectedSha256. Do not guess or substitute a hash.`;
+}
+
+function toolInputPath(turn: AgentTurn<Readonly<Record<string, unknown>>>): string | undefined {
+  if (turn.kind !== "tool_call" || typeof turn.input !== "object" || turn.input === null) {
+    return undefined;
+  }
+  const path = (turn.input as Readonly<Record<string, unknown>>)["path"];
+  return typeof path === "string" ? path : undefined;
+}
+
+function isMutationTool(tool: string): boolean {
+  return tool === "apply_patch" || tool === "create_file" || tool === "write_file";
+}
 
 export interface RuntimeModelRequest {
   readonly requestId: string;
@@ -94,11 +130,15 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
       Math.max(4_096, options.maxOutputTokens),
     );
     this.retryPolicy = options.retryPolicy ?? new RetryPolicy(0, 0);
+    const toolSchemas = options.tools.schemasFor(options.allowedTools).map((tool) => ({
+      tool: tool.name,
+      input: zodToJsonSchema(tool.inputSchema, { $refStrategy: "none" }),
+    }));
     this.conversation.append({ role: "system", content: options.systemPrompt, critical: true });
     this.conversation.append({
       role: "system",
       critical: true,
-      content: `RESPONSE PROTOCOL: Return exactly one direct JSON object and no prose or Markdown. A tool turn must be {"kind":"tool_call","callId":"unique-id","tool":"one_allowed_tool","input":{...}}. A final turn must be {"kind":"complete",...required_role_fields}. Use only these tools: ${options.allowedTools.join(", ")}.`,
+      content: `RESPONSE PROTOCOL: Return exactly one direct JSON object and no prose or Markdown. A tool turn must be {"kind":"tool_call","callId":"unique-id","tool":"one_allowed_tool","input":{...}}. A final turn must be {"kind":"complete",...required_role_fields}. Use only these tools: ${options.allowedTools.join(", ")}. TOOL INPUT SCHEMAS: ${JSON.stringify(toolSchemas)}`,
     });
     this.conversation.append({ role: "user", content: options.task, critical: true });
   }
@@ -107,7 +147,10 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
     let toolCalls = 0;
     let replayedToolCalls = 0;
     let consecutiveReplays = 0;
+    let patchRecoveryFailures = 0;
+    let patchRecoveryPath: string | undefined;
     let malformedResponseRepairs = 0;
+    const modelCallFingerprints = new Map<string, string>();
     await this.options.trace?.record({
       type: "agent",
       status: "started",
@@ -159,7 +202,7 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
         if (
           error instanceof AgentRuntimeError &&
           error.code === "INVALID_MODEL_RESPONSE" &&
-          malformedResponseRepairs < 2
+          malformedResponseRepairs < MAX_MALFORMED_RESPONSE_REPAIRS
         ) {
           malformedResponseRepairs += 1;
           const issues = Array.isArray(error.details["issues"])
@@ -169,6 +212,16 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
                 return typeof path === "string" && path.length > 0 ? [path.slice(0, 128)] : [];
               })
             : [];
+          const parsedRecord =
+            typeof response.parsed === "object" &&
+            response.parsed !== null &&
+            !Array.isArray(response.parsed)
+              ? (response.parsed as Readonly<Record<string, unknown>>)
+              : undefined;
+          const harmonyRecipient =
+            /<\|channel\|>(?:analysis|commentary)\s+to=\s*([^\s<]{1,128})/u.exec(
+              response.content,
+            )?.[1];
           await this.options.trace?.record({
             type: "model_response_repair",
             status: "scheduled",
@@ -179,17 +232,60 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
               attempt: malformedResponseRepairs,
               errorCode: error.code,
               issuePaths: issues,
+              issueCount: Array.isArray(error.details["issues"])
+                ? error.details["issues"].length
+                : 0,
+              responseContentBytes: Buffer.byteLength(response.content, "utf8"),
+              responseContentSha256: createHash("sha256").update(response.content).digest("hex"),
+              responseParsedType: Array.isArray(response.parsed)
+                ? "array"
+                : response.parsed === null
+                  ? "null"
+                  : typeof response.parsed,
+              responseParsedKeys:
+                parsedRecord === undefined ? [] : Object.keys(parsedRecord).sort().slice(0, 16),
+              responseParsedValueTypes:
+                parsedRecord === undefined
+                  ? []
+                  : Object.entries(parsedRecord)
+                      .sort(([left], [right]) => left.localeCompare(right))
+                      .slice(0, 16)
+                      .map(
+                        ([key, value]) => `${key}:${Array.isArray(value) ? "array" : typeof value}`,
+                      ),
+              matchingAllowedToolSchemas: this.parser.matchingToolNames(response.parsed),
+              harmonyToolMarker: /<\|channel\|>(?:analysis|commentary)\s+to=/u.test(
+                response.content,
+              ),
+              ...(harmonyRecipient === undefined ? {} : { harmonyRecipient }),
             },
           });
           this.conversation.append({
             role: "user",
             critical: true,
             content:
-              "Your previous response was rejected before any tool ran. Return exactly one corrected JSON tool-call or completion object with every required field. Do not repeat a prior callId.",
+              "Your previous response was rejected before any tool ran. Return exactly one corrected direct JSON tool-call or completion object with every required field. Use only these tool names: " +
+              `${this.options.allowedTools.join(", ")}. Do not emit Harmony control tokens, a recipient such as to=tool_call, or container.exec. Do not repeat a prior callId.`,
           });
           continue;
         }
         throw error;
+      }
+      if (turn.kind === "tool_call") {
+        const fingerprint = toolCallFingerprint(turn);
+        const existingFingerprint = modelCallFingerprints.get(turn.callId);
+        if (
+          fingerprint !== undefined &&
+          existingFingerprint !== undefined &&
+          existingFingerprint !== fingerprint
+        ) {
+          turn = { ...turn, callId: `${this.options.agentId}-normalized-${step}` };
+        } else if (fingerprint !== undefined) {
+          modelCallFingerprints.set(turn.callId, fingerprint);
+        }
+        // Tool registries are shared by workflow roles. Model-local call IDs such as
+        // "1" must therefore be scoped before registry-level idempotency applies.
+        turn = { ...turn, callId: `${this.options.agentId}:${turn.callId}` };
       }
       await this.options.trace?.record({
         type: "model_request",
@@ -209,6 +305,18 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
           metadata: { steps: step, toolCalls, replayedToolCalls },
         });
         return { final: turn, steps: step, toolCalls, replayedToolCalls };
+      }
+
+      if (
+        patchRecoveryPath !== undefined &&
+        (turn.tool !== "read_file" || toolInputPath(turn) !== patchRecoveryPath) &&
+        isMutationTool(turn.tool)
+      ) {
+        throw new AgentRuntimeError(
+          "PATCH_RECOVERY_REQUIRED",
+          "A failed patch requires a fresh read_file observation of the same path before another mutation.",
+          { path: patchRecoveryPath, attemptedTool: turn.tool },
+        );
       }
 
       this.conversation.append({ role: "assistant", content: JSON.stringify(turn) });
@@ -258,6 +366,36 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
         content: JSON.stringify(toolResult),
         critical: toolResult.status === "error",
       });
+      const hashNotice = hashPreconditionNotice(turn.tool, toolResult);
+      if (hashNotice !== undefined) {
+        this.conversation.append({ role: "user", content: hashNotice, critical: true });
+      }
+      if (turn.tool === "apply_patch" && toolResult.status === "error") {
+        patchRecoveryFailures += 1;
+        patchRecoveryPath = toolInputPath(turn);
+        this.conversation.append({
+          role: "user",
+          critical: true,
+          content:
+            "PATCH RECOVERY: The patch failed. Before any further mutation, call read_file for " +
+            `${JSON.stringify(patchRecoveryPath ?? "the failed path")} and use its newly observed SHA-256. Prefer write_file only after that fresh read if a focused patch cannot be made valid.`,
+        });
+      } else if (
+        patchRecoveryPath !== undefined &&
+        turn.tool === "read_file" &&
+        toolInputPath(turn) === patchRecoveryPath &&
+        toolResult.status === "success" &&
+        hashPreconditionNotice(turn.tool, toolResult) !== undefined
+      ) {
+        patchRecoveryPath = undefined;
+      }
+      if (patchRecoveryFailures >= MAX_PATCH_RECOVERY_FAILURES) {
+        throw new AgentRuntimeError(
+          "TOOL_EXECUTION_FAILED",
+          "Agent failed a corrective patch attempt after a required fresh read; stop and inspect the observed file hash before retrying.",
+          { tool: turn.tool, failures: patchRecoveryFailures },
+        );
+      }
     }
   }
 }
