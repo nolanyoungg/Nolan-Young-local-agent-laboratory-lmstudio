@@ -28,6 +28,22 @@ const ToolCallTurnSchema = z
   })
   .strict();
 
+/**
+ * A deliberately flat JSON-schema envelope for LM Studio constrained decoding.
+ * JSON Schema unions with dynamic tool inputs are not consistently supported by
+ * local structured-output engines. The inner JSON strings are parsed and
+ * strictly validated before any action is accepted.
+ */
+const ModelEnvelopeSchema = z
+  .object({
+    kind: z.enum(["tool_call", "complete"]),
+    callId: z.string().max(128),
+    tool: z.string().max(64),
+    input: z.string().min(2),
+    output: z.string().min(2),
+  })
+  .strict();
+
 export interface StructuredToolSchema {
   readonly name: string;
   readonly inputSchema: z.ZodType<unknown>;
@@ -74,6 +90,11 @@ function firstCompleteJsonValue(content: string, startAt: number): string | unde
   return undefined;
 }
 
+function parseEmbeddedJson(value: string): unknown {
+  const parsed = JSON.parse(value) as unknown;
+  return typeof parsed === "string" ? JSON.parse(parsed) : parsed;
+}
+
 function toolCallSchema(tool: StructuredToolSchema): z.AnyZodObject {
   return z
     .object({
@@ -91,13 +112,14 @@ export class StructuredResponseParser<TFinal extends Readonly<Record<string, unk
    * This intentionally avoids LM Studio's constrained grammar for a dynamic
    * tool union while preserving validation before any tool execution.
    */
-  public readonly schema: z.ZodType<unknown> = z.unknown();
+  public readonly schema: z.ZodType<unknown>;
   private readonly validationSchema: z.ZodType<AgentTurn<TFinal>>;
   private readonly tools: readonly StructuredToolSchema[];
 
   public constructor(finalSchema: z.AnyZodObject, tools: readonly StructuredToolSchema[] = []) {
     this.tools = tools;
     this.validationSchema = this.createTurnSchema(finalSchema, tools);
+    this.schema = ModelEnvelopeSchema;
   }
 
   private createTurnSchema(
@@ -114,7 +136,9 @@ export class StructuredResponseParser<TFinal extends Readonly<Record<string, unk
   }
 
   public parse(value: unknown, context: ModelParseContext = {}): AgentTurn<TFinal> {
-    const result = this.validationSchema.safeParse(value);
+    const envelope = ModelEnvelopeSchema.safeParse(value);
+    const decoded = envelope.success ? this.decodeEnvelope(envelope.data) : value;
+    const result = this.validationSchema.safeParse(decoded);
     if (result.success) return result.data;
 
     const genericHarmony = this.parseGenericHarmonyToolCall(value, context);
@@ -136,6 +160,35 @@ export class StructuredResponseParser<TFinal extends Readonly<Record<string, unk
       return this.invalid(harmonyResult.error.issues);
     }
     return this.invalid(result.error.issues);
+  }
+
+  private decodeEnvelope(envelope: z.infer<typeof ModelEnvelopeSchema>): unknown {
+    try {
+      if (envelope.kind === "tool_call") {
+        let input: unknown;
+        try {
+          input = parseEmbeddedJson(envelope.input);
+        } catch {
+          input = envelope.input;
+        }
+        return {
+          kind: "tool_call",
+          callId: envelope.callId,
+          tool: envelope.tool,
+          input:
+            typeof input === "string" &&
+            (envelope.tool === "read_file" || envelope.tool === "read_file_metadata")
+              ? { path: input }
+              : input,
+        };
+      }
+      const output = parseEmbeddedJson(envelope.output);
+      return typeof output === "object" && output !== null && !Array.isArray(output)
+        ? { kind: "complete", ...output }
+        : envelope;
+    } catch {
+      return envelope;
+    }
   }
 
   public matchingToolNames(value: unknown): readonly string[] {

@@ -54,15 +54,22 @@ export function createLMStudioConnectionConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): LMStudioConnectionConfig {
   const configuredBaseUrl =
-    overrides.baseUrl ?? environment["LM_STUDIO_BASE_URL"] ?? DEFAULT_LM_STUDIO_BASE_URL;
+    overrides.baseUrl ??
+    environment["LMSTUDIO_BASE_URL"] ??
+    environment["LM_STUDIO_BASE_URL"] ??
+    DEFAULT_LM_STUDIO_BASE_URL;
   const endpoint = validateLMStudioEndpoint(configuredBaseUrl);
-  const configuredToken = overrides.apiToken ?? environment["LM_STUDIO_API_TOKEN"];
+  const configuredToken =
+    overrides.apiToken ?? environment["LMSTUDIO_API_TOKEN"] ?? environment["LM_STUDIO_API_TOKEN"];
   const apiToken = configuredToken?.trim() === "" ? undefined : configuredToken?.trim();
 
   const candidate = {
     baseUrl: endpoint.httpBaseUrl,
     requestedModel:
-      overrides.requestedModel ?? environment["LM_STUDIO_MODEL"] ?? DEFAULTS.requestedModel,
+      overrides.requestedModel ??
+      environment["LMSTUDIO_MODEL"] ??
+      environment["LM_STUDIO_MODEL"] ??
+      DEFAULTS.requestedModel,
     contextLength:
       overrides.contextLength ??
       envNumber(environment, "MODEL_CONTEXT_TOKENS", DEFAULTS.contextLength),

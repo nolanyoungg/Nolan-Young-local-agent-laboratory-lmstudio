@@ -13,7 +13,6 @@ import type {
 import { ModelCompletionRequestSchema } from "./LocalModelClient.js";
 import { retryModelOperation, runWithDeadline } from "./async-control.js";
 import { ModelClientError, ModelClientErrorCode } from "./errors.js";
-import { validateLMStudioEndpoint } from "./LMStudioEndpoint.js";
 import { LMStudioModelResolver } from "./LMStudioModelResolver.js";
 import {
   LMStudioRestHealthClient,
@@ -26,15 +25,9 @@ import {
   schemaForRest,
   type RawStructuredCompletion,
 } from "./LMStudioStructuredOutput.js";
-import {
-  DefaultLMStudioSdkAdapter,
-  type LMStudioSdkAdapter,
-  type SdkCompletionResult,
-} from "./LMStudioSdkAdapter.js";
 
 export interface LMStudioModelClientDependencies {
   readonly fetch?: FetchLike;
-  readonly sdk?: LMStudioSdkAdapter;
 }
 
 interface RawProviderResult extends RawStructuredCompletion {
@@ -108,9 +101,7 @@ function parseCompletionRequest(request: ModelCompletionRequest) {
 
 export class LMStudioModelClient implements LocalModelClient {
   readonly #config: LMStudioConnectionConfig;
-  readonly #endpoint: ReturnType<typeof validateLMStudioEndpoint>;
   readonly #rest: LMStudioRestHealthClient;
-  readonly #sdk: LMStudioSdkAdapter;
   readonly #resolver = new LMStudioModelResolver();
 
   public constructor(
@@ -118,9 +109,7 @@ export class LMStudioModelClient implements LocalModelClient {
     dependencies: LMStudioModelClientDependencies = {},
   ) {
     this.#config = config;
-    this.#endpoint = validateLMStudioEndpoint(config.baseUrl);
     this.#rest = new LMStudioRestHealthClient(config, dependencies.fetch ?? globalThis.fetch);
-    this.#sdk = dependencies.sdk ?? new DefaultLMStudioSdkAdapter();
   }
 
   public get config(): LMStudioConnectionConfig {
@@ -128,19 +117,13 @@ export class LMStudioModelClient implements LocalModelClient {
   }
 
   public get transport(): "sdk" | "rest" {
-    return this.#config.apiToken === undefined ? "sdk" : "rest";
+    return "rest";
   }
 
   public async initializeSdk(): Promise<void> {
-    if (this.#config.apiToken !== undefined) {
-      return;
-    }
-    await runWithDeadline(
-      "LM Studio SDK initialization",
-      this.#config.connectionTimeoutMs,
-      undefined,
-      async () => this.#sdk.initialize(this.#endpoint.sdkWebSocketUrl),
-    );
+    // The documented OpenAI-compatible HTTP API supports both local and LM Link
+    // endpoints. No WebSocket connection is required by this library.
+    return;
   }
 
   public async healthCheck(): Promise<ModelHealthStatus> {
@@ -241,14 +224,7 @@ export class LMStudioModelClient implements LocalModelClient {
     maxTokens: number,
     signal: AbortSignal | undefined,
   ): Promise<RawProviderResult> {
-    if (this.#config.apiToken !== undefined) {
-      await runWithDeadline(
-        "LM Studio model loading",
-        this.#config.loadTimeoutMs,
-        signal,
-        async (deadlineSignal) =>
-          this.#rest.loadModel(model, this.#config.contextLength, deadlineSignal),
-      );
+    {
       const result: RestCompletionResult = await this.#rest.complete({
         model,
         messages,
@@ -259,39 +235,5 @@ export class LMStudioModelClient implements LocalModelClient {
       });
       return result;
     }
-
-    const loadedModel = await runWithDeadline(
-      "LM Studio model loading",
-      this.#config.loadTimeoutMs,
-      signal,
-      async (deadlineSignal) =>
-        this.#sdk.loadModel({
-          sdkWebSocketUrl: this.#endpoint.sdkWebSocketUrl,
-          model,
-          contextLength: this.#config.contextLength,
-          signal: deadlineSignal,
-        }),
-    );
-    const result: SdkCompletionResult = await runWithDeadline(
-      "LM Studio prediction",
-      this.#config.predictionTimeoutMs,
-      signal,
-      async (deadlineSignal) =>
-        this.#sdk.complete({
-          loadedModel,
-          messages,
-          outputSchema,
-          structuredOutput,
-          temperature,
-          maxTokens,
-          signal: deadlineSignal,
-        }),
-    );
-    return {
-      content: result.content,
-      model: result.model ?? model,
-      ...(result.parsed === undefined ? {} : { parsed: result.parsed }),
-      ...(result.stopReason === undefined ? {} : { stopReason: result.stopReason }),
-    };
   }
 }

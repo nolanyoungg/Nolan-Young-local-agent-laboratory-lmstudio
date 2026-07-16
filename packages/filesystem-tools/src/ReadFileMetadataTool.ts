@@ -1,7 +1,7 @@
 import { lstat } from "node:fs/promises";
 import { z } from "zod";
 import { DryRunOverlay } from "./DryRunOverlay.js";
-import { parseToolInput, readUtf8File, sha256, utf8Bytes } from "./internal.js";
+import { parseToolInput, sha256, utf8Bytes } from "./internal.js";
 import type { ToolDependencies } from "./types.js";
 
 export const ReadFileMetadataInputSchema = z.object({ path: z.string().min(1) }).strict();
@@ -41,13 +41,14 @@ export class ReadFileMetadataTool {
     }
 
     const metadata = await lstat(guarded.absolutePath);
-    const content = metadata.isFile() ? (await readUtf8File(guarded.absolutePath)).content : null;
     return {
       path: guarded.relativePath,
       type: metadata.isDirectory() ? "directory" : "file",
       bytes: metadata.size,
       modifiedAt: metadata.mtime.toISOString(),
-      sha256: content === null ? null : sha256(content),
+      // Metadata inspection deliberately never opens the file. This makes it
+      // safe for binary images and fonts and avoids exposing file contents.
+      sha256: null,
       fromDryRunOverlay: false,
     };
   }

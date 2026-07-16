@@ -21,24 +21,11 @@ class ScriptedClient implements RuntimeModelClient {
 
   public async complete<T>(
     request: RuntimeModelRequest,
-    outputSchema: z.ZodType<T>,
+    _outputSchema: z.ZodType<T>,
   ): Promise<RuntimeModelResponse<T>> {
     this.requests.push(request);
     const response = this.responses.shift();
-    const direct = outputSchema.safeParse(response);
-    if (direct.success) return { parsed: direct.data, content: JSON.stringify(response) };
-    if (typeof response !== "object" || response === null || Array.isArray(response)) {
-      throw direct.error;
-    }
-    const parsed = outputSchema.parse({
-      kind: (response as { kind?: unknown }).kind,
-      payload: JSON.stringify(
-        Object.fromEntries(
-          Object.entries(response as Record<string, unknown>).filter(([key]) => key !== "kind"),
-        ),
-      ),
-    });
-    return { parsed, content: JSON.stringify(response) };
+    return { parsed: response as T, content: JSON.stringify(response) };
   }
 }
 
