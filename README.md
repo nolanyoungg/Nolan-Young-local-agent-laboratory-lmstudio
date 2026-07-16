@@ -163,6 +163,19 @@ npm run check:lmstudio -- --model openai/gpt-oss-20b --inference
 npm run check:lmlink -- --model openai/gpt-oss-20b
 ```
 
+`npm run validate` includes a mandatory live acceptance gate for all three agents.
+It requires LM Studio to expose a loaded, tool-capable `openai/gpt-oss-20b` at
+the configured loopback endpoint. Run the same preflight manually with:
+
+```powershell
+npm run check:lmstudio -- --model openai/gpt-oss-20b --inference
+```
+
+If it fails, load/select that model in LM Studio and confirm its preferred
+LM Link device before rerunning `npm run test:agents:live`. The acceptance gate
+uses temporary fixture copies and dry-run modes, so it never changes repository
+examples or produces release artifacts.
+
 `check:lmstudio -- --inference` performs a short structured completion. It is
 the quickest live proof that the selected model can answer. `check:lmlink` also
 tries the advisory, read-only `lms link status --json` and `lms ps --json` calls

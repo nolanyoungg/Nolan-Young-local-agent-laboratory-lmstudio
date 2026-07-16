@@ -154,12 +154,15 @@ export class ToolRegistry {
   public schemasFor(names: readonly string[]): readonly Readonly<{
     name: string;
     inputSchema: z.ZodType<unknown>;
+    mutating: boolean;
   }>[] {
     return [...new Set(names)]
       .sort((left, right) => left.localeCompare(right))
       .flatMap((name) => {
         const tool = this.tools.get(name);
-        return tool === undefined ? [] : [{ name: tool.name, inputSchema: tool.inputSchema }];
+        return tool === undefined
+          ? []
+          : [{ name: tool.name, inputSchema: tool.inputSchema, mutating: tool.mutating }];
       });
   }
 

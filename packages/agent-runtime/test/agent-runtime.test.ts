@@ -15,12 +15,15 @@ import {
 } from "../src/index.js";
 
 class ScriptedClient implements RuntimeModelClient {
+  public readonly requests: RuntimeModelRequest[] = [];
+
   public constructor(private readonly responses: unknown[]) {}
 
   public async complete<T>(
-    _request: RuntimeModelRequest,
+    request: RuntimeModelRequest,
     outputSchema: z.ZodType<T>,
   ): Promise<RuntimeModelResponse<T>> {
+    this.requests.push(request);
     const response = this.responses.shift();
     const direct = outputSchema.safeParse(response);
     if (direct.success) return { parsed: direct.data, content: JSON.stringify(response) };
@@ -36,6 +39,14 @@ class ScriptedClient implements RuntimeModelClient {
       ),
     });
     return { parsed, content: JSON.stringify(response) };
+  }
+}
+
+class TraceCollector {
+  public readonly events: Array<Readonly<Record<string, unknown>>> = [];
+
+  public async record(event: Readonly<Record<string, unknown>>): Promise<void> {
+    this.events.push(event);
   }
 }
 
@@ -84,6 +95,198 @@ describe("agent runtime", () => {
     const result = await baseLoop(client, tools).run();
     expect(result.toolCalls).toBe(1);
     expect(result.final["summary"]).toBe("done");
+  });
+
+  it("normalizes conflicting model call IDs before they reach the registry", async () => {
+    const paths: string[] = [];
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "read_file",
+      description: "read",
+      mutating: false,
+      inputSchema: z.object({ path: z.string() }),
+      execute: async ({ path }) => {
+        paths.push(path);
+        return { path, content: "hello" };
+      },
+    });
+    const client = new ScriptedClient([
+      { kind: "tool_call", callId: "1", tool: "read_file", input: { path: "a.ts" } },
+      { kind: "tool_call", callId: "1", tool: "read_file", input: { path: "b.ts" } },
+      { kind: "complete", summary: "done", evidence: ["a.ts", "b.ts"], findings: [] },
+    ]);
+    const result = await baseLoop(client, tools).run();
+    expect(result.toolCalls).toBe(2);
+    expect(paths).toEqual(["a.ts", "b.ts"]);
+  });
+
+  it("scopes model call IDs by agent role when loops share one registry", async () => {
+    const paths: string[] = [];
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "read_file",
+      description: "read",
+      mutating: false,
+      inputSchema: z.object({ path: z.string() }),
+      execute: async ({ path }) => {
+        paths.push(path);
+        return { path, content: "ok" };
+      },
+    });
+    const createLoop = (agentId: string, path: string) =>
+      new AgentLoop({
+        runId: "shared-run",
+        agentId,
+        systemPrompt: "Use tools.",
+        task: "Inspect.",
+        model: "mock",
+        temperature: 0,
+        contextTokens: 8192,
+        maxOutputTokens: 512,
+        maximumSteps: 2,
+        allowedTools: ["read_file"],
+        finalSchema,
+        dryRun: true,
+        modelClient: new ScriptedClient([
+          { kind: "tool_call", callId: "1", tool: "read_file", input: { path } },
+          { kind: "complete", summary: "done", evidence: [path], findings: [] },
+        ]),
+        tools,
+      });
+
+    await createLoop("diagnostician", "build.log").run();
+    await createLoop("repairer", "src/index.ts").run();
+    expect(paths).toEqual(["build.log", "src/index.ts"]);
+  });
+
+  it("anchors the observed read hash before a model can propose a mutation", async () => {
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "read_file",
+      description: "read",
+      mutating: false,
+      inputSchema: z.object({ path: z.string() }),
+      execute: async ({ path }) => ({ path, sha256: "a".repeat(64), content: "source" }),
+    });
+    const client = new ScriptedClient([
+      { kind: "tool_call", callId: "read", tool: "read_file", input: { path: "a.ts" } },
+      { kind: "complete", summary: "done", evidence: ["a.ts"], findings: [] },
+    ]);
+    await baseLoop(client, tools).run();
+    expect(client.requests[1]?.messages.map((message) => message.content).join("\n")).toContain(
+      "Any later write_file or apply_patch for this path must copy this exact value",
+    );
+  });
+
+  it("requires a fresh read after a failed patch before allowing a corrective mutation", async () => {
+    let patchAttempts = 0;
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "read_file",
+      description: "read",
+      mutating: false,
+      inputSchema: z.object({ path: z.string() }),
+      execute: async ({ path }) => ({ path, sha256: "b".repeat(64), content: "source" }),
+    });
+    tools.register({
+      name: "apply_patch",
+      description: "patch",
+      mutating: true,
+      inputSchema: z.object({ path: z.string(), patch: z.string(), expectedSha256: z.string() }),
+      execute: async () => {
+        patchAttempts += 1;
+        if (patchAttempts === 1) throw new Error("patch context did not match");
+        return { path: "a.ts", beforeSha256: "b".repeat(64), afterSha256: "c".repeat(64) };
+      },
+    });
+    const client = new ScriptedClient([
+      {
+        kind: "tool_call",
+        callId: "patch-1",
+        tool: "apply_patch",
+        input: { path: "a.ts", patch: "@@", expectedSha256: "a".repeat(64) },
+      },
+      { kind: "tool_call", callId: "read", tool: "read_file", input: { path: "a.ts" } },
+      {
+        kind: "tool_call",
+        callId: "patch-2",
+        tool: "apply_patch",
+        input: { path: "a.ts", patch: "@@", expectedSha256: "b".repeat(64) },
+      },
+      { kind: "complete", summary: "done", evidence: ["a.ts"], findings: [] },
+    ]);
+    const loop = new AgentLoop({
+      runId: "patch-recovery",
+      agentId: "editor",
+      systemPrompt: "Use tools.",
+      task: "Repair.",
+      model: "mock",
+      temperature: 0,
+      contextTokens: 8192,
+      maxOutputTokens: 512,
+      maximumSteps: 5,
+      allowedTools: ["read_file", "apply_patch"],
+      finalSchema,
+      dryRun: true,
+      modelClient: client,
+      tools,
+    });
+    await loop.run();
+    expect(patchAttempts).toBe(2);
+    expect(client.requests[1]?.messages.map((message) => message.content).join("\n")).toContain(
+      "PATCH RECOVERY",
+    );
+  });
+
+  it("fails safely when the corrective patch attempt also fails", async () => {
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "read_file",
+      description: "read",
+      mutating: false,
+      inputSchema: z.object({ path: z.string() }),
+      execute: async ({ path }) => ({ path, sha256: "b".repeat(64), content: "source" }),
+    });
+    tools.register({
+      name: "apply_patch",
+      description: "patch",
+      mutating: true,
+      inputSchema: z.object({ path: z.string(), patch: z.string(), expectedSha256: z.string() }),
+      execute: async () => {
+        throw new Error("patch context did not match");
+      },
+    });
+    const loop = new AgentLoop({
+      runId: "failed-patch-recovery",
+      agentId: "editor",
+      systemPrompt: "Use tools.",
+      task: "Repair.",
+      model: "mock",
+      temperature: 0,
+      contextTokens: 8192,
+      maxOutputTokens: 512,
+      maximumSteps: 4,
+      allowedTools: ["read_file", "apply_patch"],
+      finalSchema,
+      dryRun: true,
+      modelClient: new ScriptedClient([
+        {
+          kind: "tool_call",
+          callId: "patch-1",
+          tool: "apply_patch",
+          input: { path: "a.ts", patch: "@@", expectedSha256: "a".repeat(64) },
+        },
+        { kind: "tool_call", callId: "read", tool: "read_file", input: { path: "a.ts" } },
+        {
+          kind: "tool_call",
+          callId: "patch-2",
+          tool: "apply_patch",
+          input: { path: "a.ts", patch: "@@", expectedSha256: "b".repeat(64) },
+        },
+      ]),
+      tools,
+    });
+    await expect(loop.run()).rejects.toMatchObject({ code: "TOOL_EXECUTION_FAILED" });
   });
 
   it("deduplicates repeated mutations under new call IDs", async () => {
@@ -286,6 +489,216 @@ describe("agent runtime", () => {
     });
   });
 
+  it("adapts canonical gpt-oss Harmony calls with terminal control tokens", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      {
+        name: "read_file",
+        inputSchema: z.object({ path: z.string() }).strict(),
+      },
+    ]);
+    expect(
+      parser.parse(
+        { path: "ignored-parser-candidate.ts" },
+        {
+          harmonyCallId: "planner-2",
+          rawContent:
+            '<|start|>assistant<|channel|>analysis to=functions.read_file <|constrain|>json<|message|>{"path":"src/index.ts"}<|call|>',
+        },
+      ),
+    ).toEqual({
+      kind: "tool_call",
+      callId: "planner-2",
+      tool: "read_file",
+      input: { path: "src/index.ts" },
+    });
+  });
+
+  it("accepts LM Studio Harmony spacing around the recipient", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      { name: "list_files", inputSchema: z.object({ path: z.string() }).strict() },
+    ]);
+    expect(
+      parser.parse(
+        { path: "." },
+        {
+          harmonyCallId: "planner-spaced",
+          rawContent:
+            '<|channel|>analysis to= list_files <|constrain|>json<|message|>{"path":"."}<|call|>',
+        },
+      ),
+    ).toMatchObject({ tool: "list_files", input: { path: "." } });
+  });
+
+  it("infers an unambiguously shaped generic GPT-OSS Harmony tool call", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      {
+        name: "list_files",
+        inputSchema: z
+          .object({ path: z.string(), recursive: z.boolean(), maxResults: z.number() })
+          .strict(),
+      },
+      {
+        name: "read_file",
+        inputSchema: z
+          .object({ path: z.string(), startLine: z.number(), endLine: z.number() })
+          .strict(),
+      },
+    ]);
+    expect(
+      parser.parse(
+        { kind: "tool_call", input: { path: ".", recursive: true, maxResults: 100 } },
+        {
+          harmonyCallId: "planner-generic",
+          rawContent:
+            '<|channel|>analysis to=tool_call <|constrain|>json<|message|>{"kind":"tool_call","input":{"path":".","recursive":true,"maxResults":100}}<|call|>',
+        },
+      ),
+    ).toEqual({
+      kind: "tool_call",
+      callId: "planner-generic",
+      tool: "list_files",
+      input: { path: ".", recursive: true, maxResults: 100 },
+    });
+  });
+
+  it("uses LM Studio's parsed generic arguments before the raw Harmony payload", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      {
+        name: "list_files",
+        inputSchema: z
+          .object({ path: z.string(), recursive: z.boolean(), maxResults: z.number() })
+          .strict(),
+      },
+      { name: "read_file", inputSchema: z.object({ path: z.string() }).strict() },
+    ]);
+    expect(
+      parser.parse(
+        { path: ".", recursive: true, maxResults: 100 },
+        {
+          harmonyCallId: "planner-parsed",
+          rawContent:
+            '<|channel|>analysis to=tool_call <|constrain|>json<|message|>{"unusable":"raw payload"}<|call|>',
+        },
+      ),
+    ).toMatchObject({
+      tool: "list_files",
+      input: { path: ".", recursive: true, maxResults: 100 },
+    });
+  });
+
+  it("uses parsed generic arguments when the raw Harmony payload is incomplete", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      { name: "read_file", inputSchema: z.object({ path: z.string() }).strict() },
+    ]);
+    expect(
+      parser.parse(
+        { path: "src/index.ts" },
+        {
+          harmonyCallId: "planner-incomplete",
+          rawContent: "<|channel|>analysis to=tool_call <|constrain|>json<|message|><|call|>",
+        },
+      ),
+    ).toMatchObject({ tool: "read_file", input: { path: "src/index.ts" } });
+  });
+
+  it("uses the standard read tool only when an ambiguous generic call is read-only", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      { name: "read_file", inputSchema: z.object({ path: z.string() }).strict(), mutating: false },
+      {
+        name: "read_file_metadata",
+        inputSchema: z.object({ path: z.string() }).strict(),
+        mutating: false,
+      },
+    ]);
+    expect(
+      parser.parse(
+        { path: "src/index.ts" },
+        {
+          harmonyCallId: "editor-read",
+          rawContent:
+            '<|channel|>analysis to=tool_call <|constrain|>json<|message|>{"path":"src/index.ts"}<|call|>',
+        },
+      ),
+    ).toMatchObject({ tool: "read_file", input: { path: "src/index.ts" } });
+  });
+
+  it("rejects generic Harmony calls that match multiple allowed tools", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      { name: "read_file", inputSchema: z.object({ path: z.string() }).strict(), mutating: false },
+      { name: "write_file", inputSchema: z.object({ path: z.string() }).strict(), mutating: true },
+    ]);
+    expect(() =>
+      parser.parse(
+        { kind: "tool_call", input: { path: "src/index.ts" } },
+        {
+          harmonyCallId: "ambiguous-generic",
+          rawContent:
+            '<|channel|>analysis to=tool_call <|constrain|>json<|message|>{"kind":"tool_call","input":{"path":"src/index.ts"}}<|call|>',
+        },
+      ),
+    ).toThrow(AgentRuntimeError);
+  });
+
+  it("accepts the tool-prefixed Harmony recipient emitted by LM Studio", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      { name: "read_file", inputSchema: z.object({ path: z.string() }).strict() },
+    ]);
+    expect(
+      parser.parse(
+        { path: "src/index.ts" },
+        {
+          harmonyCallId: "tool-prefixed",
+          rawContent:
+            '<|channel|>analysis to=tool:read_file <|constrain|>json<|message|>{"path":"src/index.ts"}<|call|>',
+        },
+      ),
+    ).toMatchObject({ tool: "read_file", input: { path: "src/index.ts" } });
+  });
+
+  it("accepts the dotted tool-prefixed Harmony recipient emitted by GPT-OSS", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      {
+        name: "apply_patch",
+        inputSchema: z
+          .object({ path: z.string(), patch: z.string(), expectedSha256: z.string() })
+          .strict(),
+      },
+    ]);
+    expect(
+      parser.parse(
+        { path: "src/index.ts", patch: "@@", expectedSha256: "a".repeat(64) },
+        {
+          harmonyCallId: "tool-dotted",
+          rawContent:
+            '<|channel|>analysis to=tool.apply_patch <|constrain|>json<|message|>{"path":"src/index.ts","patch":"@@","expectedSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}<|call|>',
+        },
+      ),
+    ).toMatchObject({ tool: "apply_patch", input: { path: "src/index.ts", patch: "@@" } });
+  });
+
+  it("normalizes safe abbreviated tool and completion envelopes", () => {
+    const parser = new StructuredResponseParser(finalSchema, [
+      { name: "read_file", inputSchema: z.object({ path: z.string() }).strict() },
+    ]);
+    expect(
+      parser.parse(
+        { name: "read_file", arguments: { path: "src/index.ts" } },
+        { harmonyCallId: "generated-call" },
+      ),
+    ).toEqual({
+      kind: "tool_call",
+      callId: "generated-call",
+      tool: "read_file",
+      input: { path: "src/index.ts" },
+    });
+    expect(parser.parse({ summary: "done", evidence: [], findings: [] })).toEqual({
+      kind: "complete",
+      summary: "done",
+      evidence: [],
+      findings: [],
+    });
+  });
+
   it("repairs a malformed JSON response without executing a tool", async () => {
     const tools = new ToolRegistry();
     const client = new ScriptedClient([
@@ -295,6 +708,55 @@ describe("agent runtime", () => {
     const result = await baseLoop(client, tools).run();
     expect(result.toolCalls).toBe(0);
     expect(result.final["summary"]).toBe("recovered");
+  });
+
+  it("allows bounded additional repairs for GPT-OSS protocol drift", async () => {
+    const tools = new ToolRegistry();
+    const client = new ScriptedClient([
+      { kind: "tool_call" },
+      { kind: "tool_call" },
+      { kind: "tool_call" },
+      { kind: "complete", summary: "recovered", evidence: [], findings: [] },
+    ]);
+    const result = await baseLoop(client, tools).run();
+    expect(result.toolCalls).toBe(0);
+    expect(result.final["summary"]).toBe("recovered");
+  });
+
+  it("records bounded non-content diagnostics for rejected model responses", async () => {
+    const tools = new ToolRegistry();
+    const trace = new TraceCollector();
+    const client = new ScriptedClient([
+      { unexpected: "shape" },
+      { kind: "complete", summary: "recovered", evidence: [], findings: [] },
+    ]);
+    const loop = new AgentLoop({
+      runId: "diagnostics",
+      agentId: "planner",
+      systemPrompt: "Use tools.",
+      task: "Inspect.",
+      model: "mock",
+      temperature: 0,
+      contextTokens: 8192,
+      maxOutputTokens: 512,
+      maximumSteps: 3,
+      allowedTools: [],
+      finalSchema,
+      dryRun: false,
+      modelClient: client,
+      tools,
+      trace,
+    });
+    await loop.run();
+    const repair = trace.events.find((event) => event["type"] === "model_response_repair");
+    expect(repair?.["metadata"]).toMatchObject({
+      issueCount: 1,
+      responseParsedType: "object",
+      responseParsedKeys: ["unexpected"],
+      responseParsedValueTypes: ["unexpected:string"],
+      harmonyToolMarker: false,
+    });
+    expect(repair?.["metadata"]).not.toHaveProperty("responseContent");
   });
 
   it("enforces the step limit", () => {

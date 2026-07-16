@@ -10,6 +10,7 @@ import {
   type GuardedWorkspacePath,
   type WorkspaceGuardLike,
 } from "../src/index.js";
+import { WorkspaceGuard } from "../../workspace-security/src/index.js";
 
 describe("filesystem tools", () => {
   let workspace: string;
@@ -46,6 +47,15 @@ describe("filesystem tools", () => {
       ["a.txt", 2],
       ["b.txt", 2],
     ]);
+  });
+
+  it("lists and searches the workspace root through the production guard", async () => {
+    const productionGuard = await WorkspaceGuard.create(workspace);
+    const tools = ToolFactory.create(productionGuard);
+    const listed = await tools.listFiles.execute({ path: ".", recursive: true });
+    const searched = await tools.searchText.execute({ path: ".", query: "needle" });
+    expect(listed.entries.map((entry) => entry.path)).toContain("a.txt");
+    expect(searched.matches.map((match) => match.path)).toEqual(["a.txt", "b.txt"]);
   });
 
   it("reads bounded UTF-8 output and rejects binary files", async () => {
