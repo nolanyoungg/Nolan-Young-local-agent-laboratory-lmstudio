@@ -106,7 +106,7 @@ describe("code editor workflow", () => {
     };
     expect(mutationMetadata.operations).toEqual([
       expect.objectContaining({
-        callId: "editor-create",
+        callId: "editor:editor-create",
         tool: "create_file",
         path: "virtual.ts",
         dryRun: true,

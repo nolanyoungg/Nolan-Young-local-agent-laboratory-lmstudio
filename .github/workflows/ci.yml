@@ -29,5 +29,5 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
-      - name: Validate monorepo
-        run: npm run validate
+      - name: Validate monorepo without local-model acceptance
+        run: npm run validate:ci

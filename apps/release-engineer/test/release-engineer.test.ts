@@ -326,7 +326,7 @@ describe("ReleaseEngineerWorkflow", () => {
     expect(journal.version).toBe(1);
     expect(journal.mutations).toEqual([
       {
-        callId: "create-readme",
+        callId: "release-repairer:create-readme",
         tool: "create_file",
         fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u) as string,
         path: "README.md",

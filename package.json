@@ -19,6 +19,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "validate": "npm run verify:workspaces && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run smoke:mock && npm run test:agents:live && npm run build",
+    "validate:ci": "npm run verify:workspaces && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run smoke:mock && npm run build",
     "clean": "tsx scripts/clean-generated-data.ts",
     "code-editor": "tsx apps/code-editor/src/cli.ts",
     "build-assistant": "tsx apps/build-assistant/src/cli.ts",
