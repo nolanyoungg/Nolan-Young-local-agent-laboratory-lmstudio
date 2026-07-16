@@ -6,11 +6,8 @@ coverage/
 .env
 .env.*
 !.env.example
-reports/runs/*
-!reports/runs/.gitkeep
-reports/.locks/
-workspaces/*
-!workspaces/.gitkeep
+reports/agent-runs/*
+!reports/agent-runs/.gitkeep
 *.log
 *.tmp
 .DS_Store

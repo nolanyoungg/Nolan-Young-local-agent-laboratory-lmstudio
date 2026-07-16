@@ -1,50 +1,29 @@
-import { access, readdir, realpath } from "node:fs/promises";
+import { access, readdir } from "node:fs/promises";
 import { constants } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
-const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const requiredApps = ["build-assistant", "code-editor", "release-engineer"] as const;
-const requiredPackages = [
+const root = resolve(import.meta.dirname, "..");
+for (const path of [
+  "agents/github-repo-review/AGENT.md",
+  "agents/wordpress-theme-verification-agent/AGENT.md",
+  "skills/evidence-based-review/SKILL.md",
+  "skills/repo-auditor/SKILL.md",
+  "skills/wordpress-theme-verification/SKILL.md",
+  "reports/agent-runs/.gitkeep",
+])
+  await access(resolve(root, path), constants.R_OK);
+const packages = (await readdir(resolve(root, "packages"), { withFileTypes: true }))
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
+const expected = [
   "agent-runtime",
   "filesystem-tools",
   "local-model-client",
-  "process-tools",
   "shared-types",
   "tracing",
   "workspace-security",
-] as const;
-
-async function assertDirectories(
-  parent: string,
-  expected: readonly string[],
-  exact: boolean,
-): Promise<void> {
-  const entries = (await readdir(parent, { withFileTypes: true }))
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
-  const expectedSorted = [...expected].sort();
-  const missing = expectedSorted.filter((name) => !entries.includes(name));
-  const extras = exact ? entries.filter((name) => !expectedSorted.includes(name)) : [];
-  if (missing.length > 0 || extras.length > 0) {
-    throw new Error(
-      `Workspace verification failed for ${parent}: missing=${missing.join(",") || "none"}; extra=${extras.join(",") || "none"}`,
-    );
-  }
-}
-
-async function main(): Promise<void> {
-  const canonicalRoot = await realpath(repositoryRoot);
-  await access(resolve(canonicalRoot, "package.json"), constants.R_OK);
-  await assertDirectories(resolve(canonicalRoot, "apps"), requiredApps, true);
-  await assertDirectories(resolve(canonicalRoot, "packages"), requiredPackages, true);
-  await assertDirectories(
-    resolve(canonicalRoot, "examples"),
-    ["broken-typescript-project", "sample-node-project", "sample-release-project"],
-    true,
-  );
-  console.log(`Workspace structure verified at ${canonicalRoot}`);
-}
-
-await main();
+];
+if (JSON.stringify(packages) !== JSON.stringify(expected))
+  throw new Error(`Unexpected packages: ${packages.join(", ")}`);
+console.log(`Agent library structure verified at ${root}`);

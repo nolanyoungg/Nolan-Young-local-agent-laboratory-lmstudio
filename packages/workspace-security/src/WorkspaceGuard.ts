@@ -46,7 +46,20 @@ export class WorkspaceGuard {
     relativePath: string,
     operation: PathOperation,
   ): Promise<ResolvedWorkspacePath> {
-    const normalized = this.pathPolicy.assertAllowed(relativePath, operation);
+    const suppliedAbsolute = path.isAbsolute(relativePath);
+    const candidate = suppliedAbsolute
+      ? path.resolve(relativePath)
+      : path.resolve(this.root, relativePath);
+
+    if (!isPathInside(this.root, candidate)) {
+      throw new WorkspaceSecurityError(
+        "OUTSIDE_WORKSPACE",
+        "Resolved path is outside the workspace root",
+        { path: candidate },
+      );
+    }
+    const relativeCandidate = path.relative(this.root, candidate).replaceAll("\\", "/") || ".";
+    const normalized = this.pathPolicy.assertAllowed(relativeCandidate, operation);
     const absolutePath =
       normalized === "." ? this.root : path.resolve(this.root, ...normalized.split("/"));
 

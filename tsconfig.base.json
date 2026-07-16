@@ -9,7 +9,6 @@
       "@local-agent-lab/shared-types": ["packages/shared-types/src/index.ts"],
       "@local-agent-lab/workspace-security": ["packages/workspace-security/src/index.ts"],
       "@local-agent-lab/filesystem-tools": ["packages/filesystem-tools/src/index.ts"],
-      "@local-agent-lab/process-tools": ["packages/process-tools/src/index.ts"],
       "@local-agent-lab/tracing": ["packages/tracing/src/index.ts"],
       "@local-agent-lab/local-model-client": ["packages/local-model-client/src/index.ts"],
       "@local-agent-lab/agent-runtime": ["packages/agent-runtime/src/index.ts"]

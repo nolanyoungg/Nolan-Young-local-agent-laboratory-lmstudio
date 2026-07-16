@@ -264,7 +264,7 @@ export class LMStudioRestHealthClient {
   public async listModels(signal?: AbortSignal): Promise<RestModelListResult> {
     const started = performance.now();
     const { response, payload } = await this.#request(
-      "/api/v1/models",
+      "/v1/models",
       { method: "GET" },
       signal,
       "LM Studio model listing",
@@ -286,7 +286,7 @@ export class LMStudioRestHealthClient {
     if (entries === undefined) {
       throw new ModelClientError(
         ModelClientErrorCode.invalidResponse,
-        "LM Studio /api/v1/models returned an unsupported response shape.",
+        "LM Studio /v1/models returned an unsupported response shape.",
       );
     }
     const models = entries.flatMap(normalizeModel);
@@ -295,25 +295,6 @@ export class LMStudioRestHealthClient {
       durationMs: Math.round(performance.now() - started),
       ...(apiVersion === undefined ? {} : { apiVersion }),
     };
-  }
-
-  public async loadModel(
-    model: string,
-    contextLength: number,
-    signal?: AbortSignal,
-  ): Promise<void> {
-    await this.#request(
-      "/api/v1/models/load",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model, context_length: contextLength }),
-      },
-      signal,
-      "LM Studio model loading",
-      async (response) => response.body?.cancel().catch(() => undefined),
-      this.#config.loadTimeoutMs,
-    );
   }
 
   public async complete(input: RestCompletionInput): Promise<RestCompletionResult> {
@@ -402,15 +383,8 @@ export class LMStudioRestHealthClient {
             : "LM Studio rejected the configured API token.",
         );
       }
-      if (response.status === 404 && path.startsWith("/api/v1/")) {
-        discardResponseBody(response);
-        throw new ModelClientError(
-          ModelClientErrorCode.incompatibleVersion,
-          "LM Studio does not expose the native /api/v1 API. Version 0.4.0 or newer is required.",
-        );
-      }
       if (!response.ok) {
-        discardResponseBody(response);
+        const detail = await this.#errorDetail(response);
         const retryable =
           response.status === 408 ||
           response.status === 409 ||
@@ -421,7 +395,7 @@ export class LMStudioRestHealthClient {
           path.endsWith("/load")
             ? ModelClientErrorCode.modelLoadFailed
             : ModelClientErrorCode.invalidResponse,
-          `${operationName} failed with HTTP ${response.status}.`,
+          `${operationName} failed with HTTP ${response.status}${detail === undefined ? "." : `: ${detail}`}`,
           { retryable },
         );
       }
@@ -487,6 +461,20 @@ export class LMStudioRestHealthClient {
     } finally {
       signal.removeEventListener("abort", onAbort);
       reader?.releaseLock();
+    }
+  }
+
+  async #errorDetail(response: Response): Promise<string | undefined> {
+    try {
+      const raw = await response.text();
+      const text =
+        this.#config.apiToken === undefined
+          ? raw
+          : raw.replaceAll(this.#config.apiToken, "[REDACTED]");
+      const compact = text.replaceAll(/[\r\n\t]+/gu, " ").trim();
+      return compact.length === 0 ? undefined : compact.slice(0, 512);
+    } catch {
+      return undefined;
     }
   }
 

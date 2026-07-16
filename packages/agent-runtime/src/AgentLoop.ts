@@ -101,6 +101,7 @@ export interface AgentLoopOptions<TFinal extends Readonly<Record<string, unknown
   readonly retryPolicy?: RetryPolicy;
   readonly trace?: RuntimeTrace;
   readonly shouldRetryModelError?: (error: unknown) => boolean;
+  readonly validateComplete?: (final: Readonly<Record<string, unknown>>) => string | undefined;
 }
 
 export interface AgentLoopResult<TFinal extends Readonly<Record<string, unknown>>> {
@@ -134,11 +135,12 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
       tool: tool.name,
       input: zodToJsonSchema(tool.inputSchema, { $refStrategy: "none" }),
     }));
+    const finalResultSchema = zodToJsonSchema(options.finalSchema, { $refStrategy: "none" });
     this.conversation.append({ role: "system", content: options.systemPrompt, critical: true });
     this.conversation.append({
       role: "system",
       critical: true,
-      content: `RESPONSE PROTOCOL: Return exactly one direct JSON object and no prose or Markdown. A tool turn must be {"kind":"tool_call","callId":"unique-id","tool":"one_allowed_tool","input":{...}}. A final turn must be {"kind":"complete",...required_role_fields}. Use only these tools: ${options.allowedTools.join(", ")}. TOOL INPUT SCHEMAS: ${JSON.stringify(toolSchemas)}`,
+      content: `RESPONSE PROTOCOL: Return exactly one JSON envelope and no prose or Markdown. Every field is required: {"kind":"tool_call|complete","callId":"id-or-empty","tool":"tool-or-empty","input":"JSON string","output":"JSON string"}. Both input and output must always be valid non-empty JSON strings. For tool_call, set callId/tool and serialize the tool input in input; set output to "{}". For complete, set callId/tool to ""; set input to "{}" and serialize the final review object in output. All tool paths must be workspace-relative POSIX paths such as "theme.json" or "patterns/example.php"; never use an absolute, drive-letter, or workspace-root path. Use only these tools: ${options.allowedTools.join(", ")}. TOOL INPUT SCHEMAS: ${JSON.stringify(toolSchemas)}. FINAL RESULT JSON SCHEMA: ${JSON.stringify(finalResultSchema)}`,
     });
     this.conversation.append({ role: "user", content: options.task, critical: true });
   }
@@ -218,6 +220,8 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
             !Array.isArray(response.parsed)
               ? (response.parsed as Readonly<Record<string, unknown>>)
               : undefined;
+          const envelopeInput = parsedRecord?.["input"];
+          const envelopeOutput = parsedRecord?.["output"];
           const harmonyRecipient =
             /<\|channel\|>(?:analysis|commentary)\s+to=\s*([^\s<]{1,128})/u.exec(
               response.content,
@@ -253,6 +257,18 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
                       .map(
                         ([key, value]) => `${key}:${Array.isArray(value) ? "array" : typeof value}`,
                       ),
+              ...(typeof parsedRecord?.["kind"] === "string"
+                ? { envelopeKind: parsedRecord["kind"] }
+                : {}),
+              ...(typeof parsedRecord?.["tool"] === "string"
+                ? { envelopeTool: parsedRecord["tool"] }
+                : {}),
+              ...(typeof envelopeInput === "string"
+                ? { envelopeInputBytes: Buffer.byteLength(envelopeInput, "utf8") }
+                : {}),
+              ...(typeof envelopeOutput === "string"
+                ? { envelopeOutputBytes: Buffer.byteLength(envelopeOutput, "utf8") }
+                : {}),
               matchingAllowedToolSchemas: this.parser.matchingToolNames(response.parsed),
               harmonyToolMarker: /<\|channel\|>(?:analysis|commentary)\s+to=/u.test(
                 response.content,
@@ -297,6 +313,23 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
       });
 
       if (turn.kind === "complete") {
+        const completionIssue = this.options.validateComplete?.(turn);
+        if (completionIssue !== undefined) {
+          await this.options.trace?.record({
+            type: "final_result",
+            status: "rejected",
+            runId: this.options.runId,
+            agentId: this.options.agentId,
+            step,
+            metadata: { reason: completionIssue.slice(0, 1_000) },
+          });
+          this.conversation.append({
+            role: "user",
+            critical: true,
+            content: `Your completion was rejected: ${completionIssue} Continue with one permitted read-only tool call, then return a corrected completion.`,
+          });
+          continue;
+        }
         await this.options.trace?.record({
           type: "agent",
           status: "completed",
@@ -366,6 +399,14 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
         content: JSON.stringify(toolResult),
         critical: toolResult.status === "error",
       });
+      if (toolResult.status === "error" && toolResult.error.code === "ABSOLUTE_PATH") {
+        this.conversation.append({
+          role: "user",
+          critical: true,
+          content:
+            'RECOVERY: The prior tool path was absolute and was rejected. Retry the same tool with only a workspace-relative path; for example, use "theme.json", never C:\\... or the workspace root.',
+        });
+      }
       const hashNotice = hashPreconditionNotice(turn.tool, toolResult);
       if (hashNotice !== undefined) {
         this.conversation.append({ role: "user", content: hashNotice, critical: true });
