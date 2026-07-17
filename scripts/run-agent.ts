@@ -49,14 +49,84 @@ await mkdir(runPath, { recursive: true });
 const trace = new JsonlTraceWriter(resolve(runPath, "trace.jsonl"));
 const writer = new ReportWriter();
 const guard = await WorkspaceGuard.create(workspace);
+const normalizeWorkspaceRelativePath = (input: unknown): unknown => {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return input;
+  const path = (input as Readonly<Record<string, unknown>>)["path"];
+  if (typeof path !== "string" || !path.startsWith("/")) return input;
+  const relativePath = path.replace(/^\/+/, "") || ".";
+  return { ...input, path: relativePath };
+};
 if (manifest.id === "wordpress-theme-verification-agent") {
   const verification = await verifyWordPressTheme(guard.root);
+  const suppliedUrl = option("--lmstudio-url");
+  const suppliedModel = option("--model");
+  const client = createLMStudioModelClient({
+    config: {
+      ...(suppliedUrl === undefined ? {} : { baseUrl: suppliedUrl }),
+      ...(suppliedModel === undefined ? {} : { requestedModel: suppliedModel }),
+    },
+  });
+  const models = await client.listModels();
+  const model = suppliedModel ?? models[0]?.logicalKey;
+  if (!model)
+    throw new Error(
+      "No models are currently available from LM Studio. Load a structured-output-capable model, then retry.",
+    );
+  const assessmentSchema = z
+    .object({
+      verdict: z.enum(["consistent", "inconsistent", "insufficient-evidence"]),
+      failingCheckIds: z.array(z.string().min(1).max(160)).max(10),
+    })
+    .strict();
+  const assessmentEvidence = {
+    themePath: verification.themePath,
+    themeType: verification.themeType,
+    status: verification.status,
+    summary: verification.summary,
+    checks: verification.checks.slice(0, 100),
+    phpLint: verification.phpLint.slice(0, 100).map(({ path, status }) => ({ path, status })),
+    truncated: verification.checks.length > 100 || verification.phpLint.length > 100,
+  };
+  const assessment = await client.complete(
+    {
+      model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a WordPress theme verification reviewer. Use only the deterministic verification evidence supplied by the user. Return verdict consistent when it supports the deterministic status, inconsistent when a supplied failing or blocked check needs attention, or insufficient-evidence when the supplied evidence is incomplete. Include only supplied failing or blocked check IDs in failingCheckIds. Do not inspect files, run commands, or add prose.",
+        },
+        {
+          role: "user",
+          content: `Task: ${task}\n\nDeterministic verification evidence:\n${JSON.stringify(assessmentEvidence)}`,
+        },
+      ],
+      temperature: 0.1,
+      maxTokens: 128,
+      structuredOutput: true,
+    },
+    assessmentSchema,
+  );
+  const invalidFinding = assessment.value.failingCheckIds.find(
+    (checkId) =>
+      !verification.checks.some(
+        (check) =>
+          check.id === checkId && (check.status === "FAIL" || check.status === "BLOCKED"),
+      ),
+  );
+  if (invalidFinding)
+    throw new Error(
+      `Model assessment cited ${JSON.stringify(invalidFinding)}, which is not a failing or blocked deterministic check.`,
+    );
   const payload = {
     ...verification,
     runId,
     agent: manifest.id,
     skills: skillIds,
-    provider: "local deterministic verifier",
+    model: assessment.model,
+    baseUrl: client.config.baseUrl,
+    provider: "LM Studio with deterministic WordPress verifier",
+    modelAssessment: assessment.value,
   };
   await writer.writeJson(resolve(runPath, "result.json"), payload);
   await writer.writeJson(resolve(runPath, "run-metadata.json"), {
@@ -64,11 +134,13 @@ if (manifest.id === "wordpress-theme-verification-agent") {
     agent: manifest.id,
     skills: skillIds,
     workspace: guard.root,
-    provider: "local deterministic verifier",
+    model: assessment.model,
+    baseUrl: client.config.baseUrl,
+    provider: "LM Studio with deterministic WordPress verifier",
   });
   await writeFile(
     resolve(runPath, "report.md"),
-    `# ${manifest.id}\n\n**Theme path:** ${verification.themePath}\n\n**Detected theme type:** ${verification.themeType}\n\n**Overall status:** ${verification.status}\n\n## Checks performed\n\n${verification.checks.map((item) => `- **${item.status}** (${item.requirement}) ${item.id}: ${item.detail}${item.remediation ? ` Remediation: ${item.remediation}` : ""}`).join("\n")}\n\n## PHP lint results\n\n${verification.phpLint.map((item) => `- **${item.status}** ${item.path}: ${item.output}`).join("\n") || "No PHP files were found."}\n\n## Summary\n\n${verification.summary}\n`,
+    `# ${manifest.id}\n\n**Theme path:** ${verification.themePath}\n\n**Detected theme type:** ${verification.themeType}\n\n**Overall status:** ${verification.status}\n\n## Checks performed\n\n${verification.checks.map((item) => `- **${item.status}** (${item.requirement}) ${item.id}: ${item.detail}${item.remediation ? ` Remediation: ${item.remediation}` : ""}`).join("\n")}\n\n## PHP lint results\n\n${verification.phpLint.map((item) => `- **${item.status}** ${item.path}: ${item.output}`).join("\n") || "No PHP files were found."}\n\n## Summary\n\n${verification.summary}\n\n## Model confirmation\n\n- **Verdict:** ${assessment.value.verdict}\n- **Failing or blocked checks acknowledged by the model:** ${assessment.value.failingCheckIds.join(", ") || "None"}\n`,
     "utf8",
   );
   await trace.close();
@@ -94,7 +166,7 @@ if (manifest.id === "wordpress-theme-verification-agent") {
       mutating: false,
       inputSchema: schema,
       execute: async (input) => {
-        const result = await execute(input);
+        const result = await execute(normalizeWorkspaceRelativePath(input));
         if (
           (name === "read_file" || name === "read_file_metadata") &&
           typeof result === "object" &&
