@@ -6,10 +6,15 @@ import { listAgents, loadAgent } from "../agent-library.js";
 const root = resolve(import.meta.dirname, "..", "..");
 
 describe("agent library", () => {
-  it("loads the two read-only agents", async () => {
+  it("loads the read-only agents", async () => {
     expect(await listAgents(root)).toEqual([
+      "agent-definition-auditor",
       "github-repo-review",
       "wordpress-theme-verification-agent",
+    ]);
+    expect((await loadAgent(root, "agent-definition-auditor")).defaultSkills).toEqual([
+      "evidence-based-review",
+      "agent-definition-audit",
     ]);
     expect((await loadAgent(root, "github-repo-review")).allowedTools).toEqual([
       "list_files",

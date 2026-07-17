@@ -24,6 +24,12 @@ For a WordPress theme:
 npm run agent -- --agent wordpress-theme-verification-agent --workspace C:\work\theme --task "Verify this theme"
 ```
 
+To audit the library's agent and skill definitions:
+
+```powershell
+npm run agent -- --agent agent-definition-auditor --workspace C:\work\local-agent-library --task "Audit agent and skill definitions for loader compatibility and read-only safety"
+```
+
 The theme verifier combines deterministic checks with an evidence-limited LM Studio or LM Link assessment. It checks local WordPress structure, headers, local asset references, and PHP syntax, then sends only those verification results to the configured model. Optional flags are `--lmstudio-url`, `--model`, `--skill`, `--max-steps`, and `--report-directory`. A run writes `report.md`, validated `result.json`, `run-metadata.json`, and sanitized `trace.jsonl` below `reports/agent-runs/` by default.
 
 ## Safety boundaries
