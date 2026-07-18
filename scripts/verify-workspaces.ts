@@ -6,9 +6,12 @@ const root = resolve(import.meta.dirname, "..");
 for (const path of [
   "agents/github-repo-review/AGENT.md",
   "agents/wordpress-theme-verification-agent/AGENT.md",
+  "agents/wordpress-theme-file-reviewer-agent/AGENT.md",
   "skills/evidence-based-review/SKILL.md",
   "skills/repo-auditor/SKILL.md",
   "skills/wordpress-theme-verification/SKILL.md",
+  "skills/wordpress-theme-file-review/SKILL.md",
+  "docs/wordpress-theme-file-review-schema.md",
   "reports/agent-runs/.gitkeep",
 ])
   await access(resolve(root, path), constants.R_OK);

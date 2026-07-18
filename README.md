@@ -24,6 +24,14 @@ For a WordPress theme:
 npm run agent -- --agent wordpress-theme-verification-agent --workspace C:\work\theme --task "Verify this theme"
 ```
 
+For a deterministic complete file review of one theme or a directory of immediate-child themes (no LM Studio model is required):
+
+```powershell
+npm run agent -- --agent wordpress-theme-file-reviewer-agent --workspace C:\work\themes --task "Audit WordPress theme files"
+```
+
+This writes a readable `report.md` plus a versioned, machine-readable `result.json`. It inventories every file, runs `php -l` only when PHP is available, parses safe local formats, and reports statically resolvable local references. It never executes theme code, JavaScript, builds, WordPress, or a browser. Its local rules are based on the current official [Theme Handbook](https://developer.wordpress.org/themes/), [theme structure](https://developer.wordpress.org/themes/core-concepts/theme-structure/), [main stylesheet](https://developer.wordpress.org/themes/core-concepts/main-stylesheet/), [templates](https://developer.wordpress.org/themes/core-concepts/templates/), [theme.json](https://developer.wordpress.org/themes/core-concepts/global-settings-and-styles/), [child themes](https://developer.wordpress.org/themes/advanced-topics/child-themes/), [security](https://developer.wordpress.org/themes/advanced-topics/security/), [testing](https://developer.wordpress.org/themes/advanced-topics/testing/), and [PHP standards](https://developer.wordpress.org/coding-standards/wordpress-coding-standards/php/).
+
 To audit the library's agent and skill definitions:
 
 ```powershell

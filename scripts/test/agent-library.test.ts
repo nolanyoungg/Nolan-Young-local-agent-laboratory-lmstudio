@@ -10,6 +10,7 @@ describe("agent library", () => {
     expect(await listAgents(root)).toEqual([
       "agent-definition-auditor",
       "github-repo-review",
+      "wordpress-theme-file-reviewer-agent",
       "wordpress-theme-verification-agent",
     ]);
     expect((await loadAgent(root, "agent-definition-auditor")).defaultSkills).toEqual([
