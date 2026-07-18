@@ -56,4 +56,4 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Verify Windows-safe operations
-        run: npm run verify:workspaces && npm run verify:github-operations && npm run test && npm run build
+        run: npm run verify:workspaces && npm run verify:github-operations && npm run build && npm run test
