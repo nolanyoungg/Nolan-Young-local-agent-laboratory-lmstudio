@@ -15,7 +15,10 @@ import { WorkspaceGuard } from "@local-agent-lab/workspace-security";
 import { JsonlTraceWriter, ReportWriter } from "@local-agent-lab/tracing";
 import { loadAgent, loadSkill } from "./agent-library.js";
 import { verifyWordPressTheme } from "./wordpress-theme-verifier.js";
-import { markdownThemeFileReview, reviewWordPressThemeFiles } from "./wordpress-theme-file-reviewer.js";
+import {
+  markdownThemeFileReview,
+  reviewWordPressThemeFiles,
+} from "./wordpress-theme-file-reviewer.js";
 
 const root = resolve(import.meta.dirname, "..");
 const args = process.argv.slice(2);
@@ -62,13 +65,20 @@ if (manifest.id === "wordpress-theme-file-reviewer-agent") {
   const payload = { ...review, runId, agent: manifest.id, skills: skillIds };
   await writer.writeJson(resolve(runPath, "result.json"), payload);
   await writer.writeJson(resolve(runPath, "run-metadata.json"), {
-    runId, agent: manifest.id, skills: skillIds, workspace: guard.root,
+    runId,
+    agent: manifest.id,
+    skills: skillIds,
+    workspace: guard.root,
     provider: "deterministic local WordPress theme file reviewer",
   });
   await writeFile(resolve(runPath, "report.md"), markdownThemeFileReview(review), "utf8");
   await trace.close();
   console.log(JSON.stringify({ runPath, ...payload }, null, 2));
-  process.exitCode = review.findings.some((finding) => finding.status === "FAIL") ? 1 : review.findings.some((finding) => finding.status === "BLOCKED") ? 2 : 0;
+  process.exitCode = review.findings.some((finding) => finding.status === "FAIL")
+    ? 1
+    : review.findings.some((finding) => finding.status === "BLOCKED")
+      ? 2
+      : 0;
 } else if (manifest.id === "wordpress-theme-verification-agent") {
   const verification = await verifyWordPressTheme(guard.root);
   const suppliedUrl = option("--lmstudio-url");
@@ -123,8 +133,7 @@ if (manifest.id === "wordpress-theme-file-reviewer-agent") {
   const invalidFinding = assessment.value.failingCheckIds.find(
     (checkId) =>
       !verification.checks.some(
-        (check) =>
-          check.id === checkId && (check.status === "FAIL" || check.status === "BLOCKED"),
+        (check) => check.id === checkId && (check.status === "FAIL" || check.status === "BLOCKED"),
       ),
   );
   if (invalidFinding)

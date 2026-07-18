@@ -47,3 +47,7 @@ Agents can only list files, read text files, read metadata, and search text insi
 To add an agent, create `agents/<id>/AGENT.md` with its ID, default skills, the four allowed tools, and a step limit. To add a skill, create `skills/<id>/SKILL.md` and a small checklist reference if useful. `agents/openai.yaml` is compatibility metadata only and does not invoke an OpenAI-hosted model.
 
 Implementation references: [LM Link](https://lmstudio.ai/docs/lmlink), [LM Studio Developer Docs](https://lmstudio.ai/docs/developer), [model listing](https://lmstudio.ai/docs/developer/openai-compat/models), [structured output](https://lmstudio.ai/docs/developer/openai-compat/structured-output), and [tool use](https://lmstudio.ai/docs/developer/openai-compat/tools).
+
+## CI checks
+
+GitHub Actions runs the complete deterministic quality gate on Ubuntu: repository and workflow-operation verification, formatting, linting, type-checking, tests, and build. A dependent Windows job then repeats installation, structural workflow checks, tests, and build to catch platform-specific path or process behavior without duplicating every static check. `npm run verify:github-operations` keeps the checked-in CI contract aligned with these safe, locked-dependency operations.

@@ -18,13 +18,14 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "validate": "npm run verify:workspaces && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "validate": "npm run verify:workspaces && npm run verify:github-operations && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
     "validate:ci": "npm run validate",
     "clean": "tsx scripts/clean-generated-data.ts",
     "agent": "tsx scripts/run-agent.ts",
     "agent:list": "tsx scripts/agent-list.ts",
     "check:lmstudio": "tsx scripts/check-lmstudio.ts",
-    "verify:workspaces": "tsx scripts/verify-workspaces.ts"
+    "verify:workspaces": "tsx scripts/verify-workspaces.ts",
+    "verify:github-operations": "tsx scripts/verify-github-operations.ts"
   },
   "devDependencies": {
     "@types/diff": "^7.0.2",
