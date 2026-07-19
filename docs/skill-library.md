@@ -1,0 +1,5 @@
+# Skill Library
+
+Skills live at `skills/<lowercase-hyphenated-id>/SKILL.md`. They are reusable guidance loaded by agents with `--skill`; they do not grant tools or create agents. Optional `agents/openai.yaml` files are compatibility metadata only.
+
+The library includes the existing evidence/repository/agent-definition/theme review skills plus homepage composition, production-factory, release, data-flow, operations, consent, local-agent, dependency, asset, plugin, automation, indexing, and Windows evidence skills. See each skill's **Trigger** section for routing and non-trigger boundaries. `wordpress-homepage-template-composer` creates a fixed nine-part classic-theme homepage; `wordpress-theme-production-factory` is a resumable write-capable workflow. Neither must be attached to the read-only review agents. New operational skills require read-only discovery, exact paths/working directories, preservation of unrelated changes, evidence-versus-inference reporting, and explicit confirmation before destructive changes.
