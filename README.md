@@ -24,6 +24,16 @@ For a WordPress theme:
 npm run agent -- --agent wordpress-theme-verification-agent --workspace C:\work\theme --task "Verify this theme"
 ```
 
+## WordPress blog writer
+
+The dedicated blog writer uses the same LM Studio configuration as the rest of the library. It selects the first pending, scheduled tracker row, asks the configured local model to write the requested minimum number of words, writes a Markdown draft, and marks the row complete only with `--approve`. It rejects placeholder text and drafts shorter than the requested word count.
+
+```powershell
+npm run blog-writer -- --target C:\work\wordpress-blog-content-tracker.xlsx --output-directory C:\work\drafts --word-count 1200 --approve
+```
+
+To send the generated `blog.md` attachment through Resend, configure the optional email variables and add `--send --confirm <exact-blog-id> --recipient <email>`.
+
 For a deterministic complete file review of one theme or a directory of immediate-child themes (no LM Studio model is required):
 
 ```powershell
