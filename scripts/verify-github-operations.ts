@@ -18,8 +18,11 @@ const required = [
   "cache-dependency-path: package-lock.json",
   "npm ci",
   "npm run validate:ci",
+  "strategy:",
+  "matrix:",
   "windows-latest",
   "ubuntu-latest",
+  "macos-latest",
 ];
 for (const evidence of required)
   if (!workflow.includes(evidence))

@@ -16,6 +16,17 @@ export default [
   },
   eslint.configs.recommended,
   {
+    files: ["skills/**/scripts/**/*.mjs"],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: "module",
+      globals: {
+        process: "readonly",
+        URL: "readonly",
+      },
+    },
+  },
+  {
     files: ["**/*.ts"],
     languageOptions: {
       parser: tsParser,

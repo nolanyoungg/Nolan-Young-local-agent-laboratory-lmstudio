@@ -13,10 +13,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality:
-    name: Quality gate (Ubuntu)
-    runs-on: ubuntu-latest
+  deterministic-validation:
+    name: Deterministic validation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     env:
       CI: "true"
     steps:
@@ -34,26 +38,3 @@ jobs:
         run: npm ci
       - name: Run complete deterministic validation
         run: npm run validate:ci
-
-  windows-compatibility:
-    name: Windows compatibility
-    needs: quality
-    runs-on: windows-latest
-    timeout-minutes: 20
-    env:
-      CI: "true"
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Use Node.js 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - name: Install locked dependencies
-        run: npm ci
-      - name: Verify Windows-safe operations
-        run: npm run verify:workspaces && npm run verify:github-operations && npm run build && npm run test

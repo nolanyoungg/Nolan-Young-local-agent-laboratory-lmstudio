@@ -9,8 +9,8 @@
 ## Evidence collected
 
 | Item | Evidence | Status |
-| --- | --- | --- |
-| | | |
+| ---- | -------- | ------ |
+|      |          |        |
 
 ## Findings and next actions
 
