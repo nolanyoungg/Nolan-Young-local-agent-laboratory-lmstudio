@@ -1,0 +1,7 @@
+interface:
+  display_name: "wordpress-theme-file-review"
+  short_description: "Evidence-guided reusable workflow."
+  default_prompt: "Use $wordpress-theme-file-review for a scoped evidence-based task."
+
+policy:
+  allow_implicit_invocation: true

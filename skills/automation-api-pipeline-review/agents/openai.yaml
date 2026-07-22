@@ -1,0 +1,7 @@
+interface:
+  display_name: "Automation API Pipeline Review"
+  short_description: "Review API-driven automations, data transformations, report delivery, and schedules using safe evidence."
+  default_prompt: "Use $automation-api-pipeline-review to perform a scoped, evidence-based review."
+
+policy:
+  allow_implicit_invocation: true

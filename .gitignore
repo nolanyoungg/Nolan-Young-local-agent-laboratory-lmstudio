@@ -5,7 +5,6 @@ node_modules/
 dist-scripts/
 coverage/
 *.tsbuildinfo
-.env
 .env.*
 !.env.example
 reports/agent-runs/*

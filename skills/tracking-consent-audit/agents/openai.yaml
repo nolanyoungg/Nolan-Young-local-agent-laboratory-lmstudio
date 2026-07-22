@@ -1,0 +1,7 @@
+interface:
+  display_name: "tracking-consent-audit"
+  short_description: "Evidence-guided reusable workflow."
+  default_prompt: "Use $tracking-consent-audit for a scoped evidence-based task."
+
+policy:
+  allow_implicit_invocation: true

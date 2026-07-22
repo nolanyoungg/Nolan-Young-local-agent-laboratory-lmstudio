@@ -1,0 +1,7 @@
+interface:
+  display_name: "woocommerce-variation-data-flow"
+  short_description: "Evidence-guided reusable workflow."
+  default_prompt: "Use $woocommerce-variation-data-flow for a scoped evidence-based task."
+
+policy:
+  allow_implicit_invocation: true
