@@ -22,6 +22,24 @@ const requiredSkills = [
 ];
 
 describe("skill library", () => {
+  it("ships a complete self-contained package for every skill", async () => {
+    const names = (await readdir(resolve(root, "skills"), { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+    for (const id of names) {
+      for (const path of [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "references/output-contract.md",
+        "assets/report-template.md",
+        "scripts/print-report-template.mjs",
+      ]) {
+        const text = await readFile(resolve(root, "skills", id, path), "utf8");
+        expect(text.trim()).not.toBe("");
+      }
+    }
+  });
+
   it("keeps every skill discoverable and safety-scoped", async () => {
     const names = (await readdir(resolve(root, "skills"), { withFileTypes: true }))
       .filter((entry) => entry.isDirectory())

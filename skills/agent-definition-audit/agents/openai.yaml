@@ -1,0 +1,7 @@
+interface:
+  display_name: "Agent Definition Audit"
+  short_description: "Audit local agent definitions, manifests, skills, and loader compatibility with direct evidence."
+  default_prompt: "Use $agent-definition-audit to perform a scoped, evidence-based review."
+
+policy:
+  allow_implicit_invocation: true

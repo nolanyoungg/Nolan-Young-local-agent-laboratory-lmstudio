@@ -1,0 +1,7 @@
+interface:
+  display_name: "wordpress-asset-build-integrity"
+  short_description: "Evidence-guided reusable workflow."
+  default_prompt: "Use $wordpress-asset-build-integrity for a scoped evidence-based task."
+
+policy:
+  allow_implicit_invocation: true

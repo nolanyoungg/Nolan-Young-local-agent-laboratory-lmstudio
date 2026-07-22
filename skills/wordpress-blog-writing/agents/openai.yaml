@@ -1,0 +1,7 @@
+interface:
+  display_name: "wordpress-blog-writing"
+  short_description: "Evidence-guided reusable workflow."
+  default_prompt: "Use $wordpress-blog-writing for a scoped evidence-based task."
+
+policy:
+  allow_implicit_invocation: true

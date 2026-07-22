@@ -1,0 +1,7 @@
+interface:
+  display_name: "Cross-Platform Local Agent Lab"
+  short_description: "Validate local models and cross-device agent runs."
+  default_prompt: "Use $cross-platform-local-agent-lab for a scoped evidence-based local-agent check."
+
+policy:
+  allow_implicit_invocation: true

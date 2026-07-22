@@ -1,0 +1,7 @@
+interface:
+  display_name: "wordpress-homepage-template-composer"
+  short_description: "Evidence-guided reusable workflow."
+  default_prompt: "Use $wordpress-homepage-template-composer for a scoped evidence-based task."
+
+policy:
+  allow_implicit_invocation: true

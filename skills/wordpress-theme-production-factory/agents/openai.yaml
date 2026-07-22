@@ -1,0 +1,7 @@
+interface:
+  display_name: "wordpress-theme-production-factory"
+  short_description: "Evidence-guided reusable workflow."
+  default_prompt: "Use $wordpress-theme-production-factory for a scoped evidence-based task."
+
+policy:
+  allow_implicit_invocation: true

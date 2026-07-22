@@ -1,0 +1,7 @@
+interface:
+  display_name: "wordpress-plugin-release-readiness"
+  short_description: "Evidence-guided reusable workflow."
+  default_prompt: "Use $wordpress-plugin-release-readiness for a scoped evidence-based task."
+
+policy:
+  allow_implicit_invocation: true

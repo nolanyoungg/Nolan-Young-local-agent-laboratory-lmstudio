@@ -1,2 +1,7 @@
-interface: local-agent-library
-metadata_only: true
+interface:
+  display_name: "evidence-based-review"
+  short_description: "Evidence-guided reusable workflow."
+  default_prompt: "Use $evidence-based-review for a scoped evidence-based task."
+
+policy:
+  allow_implicit_invocation: true
