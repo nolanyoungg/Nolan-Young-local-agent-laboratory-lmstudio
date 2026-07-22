@@ -15,13 +15,13 @@ import { WorkspaceGuard } from "@local-agent-lab/workspace-security";
 import { JsonlTraceWriter, ReportWriter } from "@local-agent-lab/tracing";
 import { assertAgentExecutionMode, loadAgent, loadSkill } from "./agent-library.js";
 import { publishFinalArtifact } from "./final-artifact.js";
-import { verifyWordPressTheme } from "./wordpress-theme-verifier.js";
+import { verifyWordPressTheme } from "../wordpress-theme-verification-agent/workflow.js";
 import {
   markdownThemeFileReview,
   reviewWordPressThemeFiles,
-} from "./wordpress-theme-file-reviewer.js";
+} from "../wordpress-theme-file-reviewer-agent/workflow.js";
 
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(import.meta.dirname, "..", "..");
 const args = process.argv.slice(2);
 const option = (name: string) => {
   const index = args.indexOf(name);

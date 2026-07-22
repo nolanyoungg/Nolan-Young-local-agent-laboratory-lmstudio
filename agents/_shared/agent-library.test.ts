@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolve } from "node:path";
 import { validateLMStudioEndpoint } from "@local-agent-lab/local-model-client";
-import { assertAgentExecutionMode, listAgents, loadAgent } from "../agent-library.js";
+import { assertAgentExecutionMode, listAgents, loadAgent } from "./agent-library.js";
 
 const root = resolve(import.meta.dirname, "..", "..");
 
@@ -10,6 +10,7 @@ describe("agent library", () => {
     expect(await listAgents(root)).toEqual([
       "agent-definition-auditor",
       "github-repo-review",
+      "wordpress-blog-writer-agent",
       "wordpress-homepage-template-composer-agent",
       "wordpress-theme-file-reviewer-agent",
       "wordpress-theme-verification-agent",
@@ -28,8 +29,8 @@ describe("agent library", () => {
     const reader = await loadAgent(root, "github-repo-review");
     expect(writer.executionMode).toBe("write");
     expect(writer.allowedTools).toContain("create_file");
-    expect(() => assertAgentExecutionMode(writer, "read-only")).toThrow(/write-agent/);
-    expect(() => assertAgentExecutionMode(reader, "write")).toThrow(/npm run agent/);
+    expect(() => assertAgentExecutionMode(writer, "read-only")).toThrow(/matching agent command/);
+    expect(() => assertAgentExecutionMode(reader, "write")).toThrow(/matching agent command/);
   });
 
   it("accepts loopback HTTP and remote HTTPS without URL credentials", () => {

@@ -1,8 +1,7 @@
 node_modules/
 **/dist/
 !/dist/
-/dist/*
-!/dist/.gitkeep
+!/dist/**
 dist-scripts/
 coverage/
 *.tsbuildinfo

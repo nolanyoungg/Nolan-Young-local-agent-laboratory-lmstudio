@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..", "..");
 const requiredSkills = [
   "wordpress-theme-release-readiness",
+  "wordpress-blog-writing",
   "wordpress-theme-production-factory",
   "wordpress-homepage-template-composer",
   "wordpress-hook-data-flow",

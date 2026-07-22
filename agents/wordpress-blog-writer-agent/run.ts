@@ -1,20 +1,19 @@
 import path from "node:path";
-import {
-  defaultOutputDirectory,
-  defaultTrackerPath,
-  runWordPressBlogWriter,
-} from "./wordpress-blog-writer.js";
+import { defaultOutputDirectory, defaultTrackerPath, runWordPressBlogWriter } from "./workflow.js";
 
 const args = process.argv.slice(2);
 const option = (name: string): string | undefined => {
   const index = args.indexOf(name);
   return index < 0 ? undefined : args[index + 1];
 };
-const help = `Usage:\n  npm run blog-writer -- --word-count 1200 --approve\n\nDefaults:\n  --target ${defaultTrackerPath}\n  --output-directory ${defaultOutputDirectory}\n\nOptions:\n  --target PATH              Excel blog tracker override\n  --output-directory PATH    Markdown draft destination override\n  --word-count N             Required minimum words; default: 1200\n  --lmstudio-url URL         LM Studio OpenAI-compatible endpoint\n  --model NAME               Loaded LM Studio model\n  --approve                  Mark the selected pending row complete`;
+const help = `Usage:\n  npm run wordpress-blog-writer-agent -- --word-count 1200 --approve\n\nDefaults:\n  --target ${defaultTrackerPath}\n  --output-directory ${defaultOutputDirectory}\n\nOptions:\n  --initialize-tracker [PATH] Create an empty centralized tracker\n  --target PATH              Excel blog tracker override\n  --output-directory PATH    Markdown draft destination override\n  --word-count N             Required minimum words; default: 1200\n  --lmstudio-url URL         LM Studio OpenAI-compatible endpoint\n  --model NAME               Loaded LM Studio model\n  --approve                  Mark the selected pending row complete`;
 
 try {
   if (args.includes("--help")) console.log(help);
-  else {
+  else if (args[0] === "--initialize-tracker") {
+    process.argv = [...process.argv.slice(0, 2), ...args.slice(1)];
+    await import("./initialize-tracker.js");
+  } else {
     const wordCount = option("--word-count");
     const result = await runWordPressBlogWriter({
       ...(option("--target") === undefined ? {} : { tracker: path.resolve(option("--target")!) }),

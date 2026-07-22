@@ -22,7 +22,7 @@ import { JsonlTraceWriter, ReportWriter } from "@local-agent-lab/tracing";
 import { assertAgentExecutionMode, loadAgent, loadSkill } from "./agent-library.js";
 import { publishFinalArtifact } from "./final-artifact.js";
 
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(import.meta.dirname, "..", "..");
 const args = process.argv.slice(2);
 const option = (name: string) => {
   const index = args.indexOf(name);

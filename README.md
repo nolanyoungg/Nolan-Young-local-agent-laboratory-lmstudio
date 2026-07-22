@@ -14,14 +14,13 @@ Copy `.env.example` to `.env` and set `LMSTUDIO_BASE_URL`, `LMSTUDIO_MODEL`, and
 
 ```powershell
 npm run check:lmstudio
-npm run agent:list
-npm run agent -- --agent github-repo-review --workspace C:\work\repo --task "Review structure, tests, and documentation" --lmstudio-url http://127.0.0.1:1234/v1 --model openai/gpt-oss-20b
+npm run github-repo-review -- --workspace C:\work\repo --task "Review structure, tests, and documentation" --lmstudio-url http://127.0.0.1:1234/v1 --model openai/gpt-oss-20b
 ```
 
 For a WordPress theme:
 
 ```powershell
-npm run agent -- --agent wordpress-theme-verification-agent --workspace C:\work\theme --task "Verify this theme"
+npm run wordpress-theme-verification-agent -- --workspace C:\work\theme --task "Verify this theme"
 ```
 
 ## WordPress blog writer
@@ -29,18 +28,18 @@ npm run agent -- --agent wordpress-theme-verification-agent --workspace C:\work\
 The blog writer selects the first `pending` row in `manual-files/wordpress-blog-content-tracker.xlsx`, asks the configured local model to write the requested minimum number of words, and places the finished Markdown draft in `dist/wordpress-blog-writer/`. Draft-only runs leave the tracker unchanged; `--approve` marks the row `complete` and records its created date. It never publishes to WordPress.
 
 ```powershell
-npm run blog-writer -- --word-count 1200
-npm run blog-writer -- --word-count 1200 --approve
+npm run wordpress-blog-writer-agent -- --word-count 1200
+npm run wordpress-blog-writer-agent -- --word-count 1200 --approve
 ```
 
 Use `--target` and `--output-directory` only to override the centralized defaults. The tracker columns are `blog_id`, `blog_topic`, `blog_status`, `blog_created_date`, and `blog_posted_date`; valid status values are `pending`, `complete`, and `uploaded`.
 
-To restore an empty tracker from source control, run `npm run blog-tracker:init`. The command writes a runtime-compatible `.xlsx` with the status dropdown and date formatting already applied.
+To restore an empty tracker from source control, run `npm run wordpress-blog-writer-agent -- --initialize-tracker`. The command writes a runtime-compatible `.xlsx` with the status dropdown and date formatting already applied.
 
 For a deterministic complete file review of one theme or a directory of immediate-child themes (no LM Studio model is required):
 
 ```powershell
-npm run agent -- --agent wordpress-theme-file-reviewer-agent --workspace C:\work\themes --task "Audit WordPress theme files"
+npm run wordpress-theme-file-reviewer-agent -- --workspace C:\work\themes --task "Audit WordPress theme files"
 ```
 
 This writes a readable `report.md` plus a versioned, machine-readable `result.json`. It inventories every file, runs `php -l` only when PHP is available, parses safe local formats, and reports statically resolvable local references. It never executes theme code, JavaScript, builds, WordPress, or a browser. Its local rules are based on the current official [Theme Handbook](https://developer.wordpress.org/themes/), [theme structure](https://developer.wordpress.org/themes/core-concepts/theme-structure/), [main stylesheet](https://developer.wordpress.org/themes/core-concepts/main-stylesheet/), [templates](https://developer.wordpress.org/themes/core-concepts/templates/), [theme.json](https://developer.wordpress.org/themes/core-concepts/global-settings-and-styles/), [child themes](https://developer.wordpress.org/themes/advanced-topics/child-themes/), [security](https://developer.wordpress.org/themes/advanced-topics/security/), [testing](https://developer.wordpress.org/themes/advanced-topics/testing/), and [PHP standards](https://developer.wordpress.org/coding-standards/wordpress-coding-standards/php/).
@@ -48,10 +47,10 @@ This writes a readable `report.md` plus a versioned, machine-readable `result.js
 To audit the library's agent and skill definitions:
 
 ```powershell
-npm run agent -- --agent agent-definition-auditor --workspace C:\work\local-agent-library --task "Audit agent and skill definitions for loader compatibility and read-only safety"
+npm run agent-definition-auditor -- --workspace C:\work\local-agent-library --task "Audit agent and skill definitions for loader compatibility and read-only safety"
 ```
 
-The theme verifier combines deterministic checks with an evidence-limited LM Studio or LM Link assessment. It checks local WordPress structure, headers, local asset references, and PHP syntax, then sends only those verification results to the configured model. Optional flags are `--lmstudio-url`, `--model`, `--skill`, `--max-steps`, and `--report-directory`. A run writes `report.md`, validated `result.json`, `run-metadata.json`, and sanitized `trace.jsonl` below `reports/agent-runs/` by default. Its final Markdown report is also copied to `dist/<agent-id>/` for quick review; `dist` is generated output and stays out of Git.
+The theme verifier combines deterministic checks with an evidence-limited LM Studio or LM Link assessment. It checks local WordPress structure, headers, local asset references, and PHP syntax, then sends only those verification results to the configured model. Optional flags are `--lmstudio-url`, `--model`, `--skill`, `--max-steps`, and `--report-directory`. A run writes `report.md`, validated `result.json`, `run-metadata.json`, and sanitized `trace.jsonl` below `reports/agent-runs/` by default. Its final Markdown report is also copied to and retained in `dist/<agent-id>/` for quick review.
 
 ## Safety boundaries
 
@@ -59,15 +58,15 @@ Agents can only list files, read text files, read metadata, and search text insi
 
 Agent turns use one direct JSON object; tool inputs are JSON objects, not encoded JSON strings. A malformed structured response ends the run once with `MODEL_PROTOCOL_ERROR`; the run report and trace retain redacted model, token, finish-reason, and output-size diagnostics without appending repair prompts. File listings default to small non-recursive results so tool output does not consume the model context.
 
-To add an agent, create `agents/<id>/AGENT.md` with its ID, default skills, the four allowed tools, and a step limit. To add a skill, create `skills/<id>/SKILL.md` and a small checklist reference if useful. `agents/openai.yaml` is compatibility metadata only and does not invoke an OpenAI-hosted model.
+Every executable workflow has an exact matching command: `npm run <agent-id> -- ...`. Agent manifests, entrypoints, and agent-specific workflow code live under `agents/<agent-id>/`; reusable instructions live under `skills/<skill-id>/`. A knowledge-only skill is attached to an agent and does not receive a fake npm command.
 
 ## Write-capable homepage composition
 
-`npm run agent` is permanently read-only. Use `npm run write-agent` only for the explicitly write-capable `wordpress-homepage-template-composer-agent`. It can create or hash-check and update text files inside the selected theme root, never deletes files, and cannot use Git, deploy, install dependencies, access the network, or run arbitrary commands. Without `--apply`, mutations remain in an in-memory preview overlay.
+The explicitly write-capable `wordpress-homepage-template-composer-agent` can create or hash-check and update text files inside the selected theme root, never deletes files, and cannot use Git, deploy, install dependencies, access the network, or run arbitrary commands. Without `--apply`, mutations remain in an in-memory preview overlay.
 
 ```powershell
-npm run write-agent -- --agent wordpress-homepage-template-composer-agent --workspace C:\work\theme --task "Compose the approved homepage"
-npm run write-agent -- --agent wordpress-homepage-template-composer-agent --workspace C:\work\theme --apply --task "Compose the approved homepage"
+npm run wordpress-homepage-template-composer-agent -- --workspace C:\work\theme --task "Compose the approved homepage"
+npm run wordpress-homepage-template-composer-agent -- --workspace C:\work\theme --apply --task "Compose the approved homepage"
 ```
 
 The only command validation it can invoke is PHP lint or a declared theme `npm run build`, `lint`, `test`, `typecheck`, or `package` script; npm-script validation requires `--apply` because builds can generate files.
