@@ -10,7 +10,7 @@ This repository is a small, read-only AI-agent and skill library for models serv
 
 Start the server in LM Studio's Developer tab or with `lms server start`. For local development use `http://127.0.0.1:1234/v1`. LM Link can securely expose a model running on another device; this library consumes the URL you configure and does not create, administer, or reconfigure LM Link/Tailscale connections. HTTP is allowed only for loopback; remote endpoints must be HTTPS. Never place credentials in a URL.
 
-Copy `.env.example` to `.env` and set `LMSTUDIO_BASE_URL`, `LMSTUDIO_MODEL`, and, only when authentication is enabled in LM Studio, `LMSTUDIO_API_TOKEN`. `LMSTUDIO_MODEL=auto` (the default) uses exactly one model the server already reports as loaded; if none or several are loaded, the run stops before requesting a completion. Set an exact key such as `openai/gpt-oss-20b`, or pass `--model`, to pin a model. Tokens are sent as Bearer authentication and are redacted from reports and errors.
+Update the tracked `.env.example` file for the local LM Studio server: set `LMSTUDIO_BASE_URL` and `LMSTUDIO_MODEL`; only set `LMSTUDIO_API_TOKEN` when authentication is enabled in LM Studio, and never commit a token. `LMSTUDIO_MODEL=auto` (the default) uses exactly one model the server already reports as loaded; if none or several are loaded, the run stops before requesting a completion. Set an exact key such as `openai/gpt-oss-20b`, or pass `--model`, to pin a model. Tokens are sent as Bearer authentication and are redacted from reports and errors.
 
 ```powershell
 npm run check:lmstudio
