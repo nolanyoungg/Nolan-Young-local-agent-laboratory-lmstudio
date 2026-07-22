@@ -2,11 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import {
-  markdownThemeFileReview,
-  reviewWordPressThemeFiles,
-  type PhpRunner,
-} from "../wordpress-theme-file-reviewer.js";
+import { markdownThemeFileReview, reviewWordPressThemeFiles, type PhpRunner } from "./workflow.js";
 
 const php: PhpRunner = {
   available: async () => ({ available: true, output: "PHP" }),

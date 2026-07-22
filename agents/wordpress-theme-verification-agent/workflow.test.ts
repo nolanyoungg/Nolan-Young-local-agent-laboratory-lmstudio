@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { type PhpRunner, verifyWordPressTheme } from "../wordpress-theme-verifier.js";
+import { type PhpRunner, verifyWordPressTheme } from "./workflow.js";
 
 const roots: string[] = [];
 const php: PhpRunner = {

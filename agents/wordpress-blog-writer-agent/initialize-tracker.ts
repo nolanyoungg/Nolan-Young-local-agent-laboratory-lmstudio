@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import ExcelJS from "exceljs";
-import { defaultTrackerPath, requiredTrackerHeaders } from "./wordpress-blog-writer.js";
+import { defaultTrackerPath, requiredTrackerHeaders } from "./workflow.js";
 
 const target = resolve(process.argv[2] ?? defaultTrackerPath);
 const workbook = new ExcelJS.Workbook();

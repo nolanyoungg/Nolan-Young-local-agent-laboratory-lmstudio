@@ -5,7 +5,7 @@ import ExcelJS from "exceljs";
 import { z } from "zod";
 import { createLMStudioModelClient } from "@local-agent-lab/local-model-client";
 
-const root = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(import.meta.dirname, "..", "..");
 export const defaultTrackerPath = path.resolve(
   root,
   "manual-files",

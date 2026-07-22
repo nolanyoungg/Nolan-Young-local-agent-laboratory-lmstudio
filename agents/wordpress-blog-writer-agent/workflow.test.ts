@@ -9,7 +9,7 @@ import {
   requiredTrackerHeaders,
   runWordPressBlogWriter,
   type BlogGenerator,
-} from "../wordpress-blog-writer.js";
+} from "./workflow.js";
 
 const generator: BlogGenerator = {
   generate: async ({ topic, wordCount }) =>

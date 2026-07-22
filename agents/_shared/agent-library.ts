@@ -17,8 +17,8 @@ export function assertAgentExecutionMode(
   if (manifest.executionMode !== expected)
     throw new Error(
       expected === "read-only"
-        ? "Write-capable agents must run through npm run write-agent; add --apply to make real writes."
-        : "Read-only agents must run through npm run agent.",
+        ? "Write-capable agents must run through their matching agent command; add --apply to make real writes."
+        : "Read-only agents must run through their matching agent command.",
     );
 }
 

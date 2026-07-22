@@ -1,6 +1,6 @@
 # WordPress Theme File Review Report Schema
 
-`scripts/wordpress-theme-file-reviewer.ts` owns the versioned JSON report schema. The current `schemaVersion` is `1.0.0`; consumers must reject unknown major versions.
+`agents/wordpress-theme-file-reviewer-agent/workflow.ts` owns the versioned JSON report schema. The current `schemaVersion` is `1.0.0`; consumers must reject unknown major versions.
 
 Top-level fields are `schemaVersion`, `executionTime`, `target`, `inputClassification`, `tools`, `nonThemeDirectories`, `themes`, `findings`, and `scope`. `inputClassification` is `SINGLE_THEME_ROOT`, `THEME_COLLECTION_ROOT`, or `INVALID_TARGET`.
 
