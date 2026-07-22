@@ -24,8 +24,8 @@ export const AgentToolCallActionSchema = z.discriminatedUnion("tool", [
     z
       .object({
         path: RelativePathSchema.default("."),
-        recursive: z.boolean().default(true),
-        maxResults: z.number().int().positive().max(2_000).default(2_000),
+        recursive: z.boolean().default(false),
+        maxResults: z.number().int().positive().max(200).default(100),
       })
       .strict(),
   ),

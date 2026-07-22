@@ -7,6 +7,7 @@ for (const path of [
   "agents/github-repo-review/AGENT.md",
   "agents/wordpress-theme-verification-agent/AGENT.md",
   "agents/wordpress-theme-file-reviewer-agent/AGENT.md",
+  "agents/wordpress-homepage-template-composer-agent/AGENT.md",
   "skills/evidence-based-review/SKILL.md",
   "skills/repo-auditor/SKILL.md",
   "skills/wordpress-theme-verification/SKILL.md",

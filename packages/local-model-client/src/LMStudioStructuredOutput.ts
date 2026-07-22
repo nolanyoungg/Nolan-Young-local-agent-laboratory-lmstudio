@@ -113,6 +113,31 @@ export function parseStructuredCompletion<T>(
   };
 }
 
+/** Validate a plain-text completion without parsing or transforming it. */
+export function parseTextCompletion<T>(
+  completion: RawStructuredCompletion,
+  outputSchema: ZodType<T>,
+): ParsedStructuredCompletion<T> {
+  const content = completion.content.trim();
+  if (content === "") {
+    throw new ModelClientError(
+      ModelClientErrorCode.emptyResponse,
+      "LM Studio returned an empty response.",
+      {
+        retryable: true,
+      },
+    );
+  }
+  const validation = outputSchema.safeParse(content);
+  if (!validation.success) {
+    throw new ModelClientError(
+      ModelClientErrorCode.malformedResponse,
+      `LM Studio text output failed validation (${safeIssues(validation.error.issues)}).`,
+    );
+  }
+  return { value: validation.data, content };
+}
+
 export function appendStructuredRepairInstruction(
   originalMessages: readonly ModelMessage[],
   error: ModelClientError,

@@ -7,7 +7,7 @@ import type {
 import { AvailableModelSchema } from "./LocalModelClient.js";
 import { runWithDeadline } from "./async-control.js";
 import { ModelClientError, ModelClientErrorCode, toModelClientError } from "./errors.js";
-import { lmStudioEndpointUrl } from "./LMStudioEndpoint.js";
+import { lmStudioEndpointUrl, lmStudioNativeEndpointUrl } from "./LMStudioEndpoint.js";
 
 export type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -28,7 +28,7 @@ export interface RestCompletionInput {
   readonly messages: readonly ModelMessage[];
   readonly temperature: number;
   readonly maxTokens: number;
-  readonly jsonSchema: Readonly<Record<string, unknown>>;
+  readonly jsonSchema?: Readonly<Record<string, unknown>>;
   readonly signal?: AbortSignal;
 }
 
@@ -36,6 +36,8 @@ export interface RestCompletionResult {
   readonly content: string;
   readonly model: string;
   readonly stopReason?: string;
+  readonly promptTokens?: number;
+  readonly completionTokens?: number;
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -264,10 +266,10 @@ export class LMStudioRestHealthClient {
   public async listModels(signal?: AbortSignal): Promise<RestModelListResult> {
     const started = performance.now();
     const { response, payload } = await this.#request(
-      "/v1/models",
+      "/api/v1/models",
       { method: "GET" },
       signal,
-      "LM Studio model listing",
+      "LM Studio native model listing",
       async (response, deadlineSignal) => ({
         response,
         payload: await this.#json(response, deadlineSignal),
@@ -286,7 +288,7 @@ export class LMStudioRestHealthClient {
     if (entries === undefined) {
       throw new ModelClientError(
         ModelClientErrorCode.invalidResponse,
-        "LM Studio /v1/models returned an unsupported response shape.",
+        "LM Studio /api/v1/models returned an unsupported response shape.",
       );
     }
     const models = entries.flatMap(normalizeModel);
@@ -309,14 +311,18 @@ export class LMStudioRestHealthClient {
           temperature: input.temperature,
           max_tokens: input.maxTokens,
           stream: false,
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "local_agent_response",
-              strict: true,
-              schema: input.jsonSchema,
-            },
-          },
+          ...(input.jsonSchema === undefined
+            ? {}
+            : {
+                response_format: {
+                  type: "json_schema",
+                  json_schema: {
+                    name: "local_agent_response",
+                    strict: true,
+                    schema: input.jsonSchema,
+                  },
+                },
+              }),
         }),
       },
       input.signal,
@@ -340,7 +346,20 @@ export class LMStudioRestHealthClient {
     }
     const responseModel = firstString(payloadRecord, ["model"]) ?? input.model;
     const stopReason = firstString(firstChoice, ["finish_reason", "finishReason"]);
-    return { content, model: responseModel, ...(stopReason === undefined ? {} : { stopReason }) };
+    const usage = record(payloadRecord?.["usage"]);
+    const promptTokens = firstNumber(usage, ["prompt_tokens", "promptTokens", "input_tokens"]);
+    const completionTokens = firstNumber(usage, [
+      "completion_tokens",
+      "completionTokens",
+      "output_tokens",
+    ]);
+    return {
+      content,
+      model: responseModel,
+      ...(stopReason === undefined ? {} : { stopReason }),
+      ...(promptTokens === undefined ? {} : { promptTokens }),
+      ...(completionTokens === undefined ? {} : { completionTokens }),
+    };
   }
 
   async #request<T>(
@@ -358,7 +377,10 @@ export class LMStudioRestHealthClient {
     return runWithDeadline(operationName, timeoutMs, signal, async (deadlineSignal) => {
       let response: Response;
       try {
-        response = await this.#fetch(lmStudioEndpointUrl(this.#config.baseUrl, path), {
+        const url = path.startsWith("/api/")
+          ? lmStudioNativeEndpointUrl(this.#config.baseUrl, path)
+          : lmStudioEndpointUrl(this.#config.baseUrl, path);
+        response = await this.#fetch(url, {
           ...init,
           headers,
           signal: deadlineSignal,

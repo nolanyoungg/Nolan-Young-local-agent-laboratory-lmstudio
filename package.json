@@ -22,6 +22,9 @@
     "validate:ci": "npm run validate",
     "clean": "tsx scripts/clean-generated-data.ts",
     "agent": "tsx scripts/run-agent.ts",
+    "blog-writer": "tsx scripts/run-wordpress-blog-writer.ts",
+    "blog-tracker:init": "tsx scripts/create-wordpress-blog-tracker.ts",
+    "write-agent": "tsx scripts/run-write-agent.ts",
     "agent:list": "tsx scripts/agent-list.ts",
     "check:lmstudio": "tsx scripts/check-lmstudio.ts",
     "verify:workspaces": "tsx scripts/verify-workspaces.ts",
@@ -40,5 +43,8 @@
     "tsx": "^4.20.3",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
   }
 }

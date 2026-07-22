@@ -1,6 +1,13 @@
 import type { AvailableModel, ResolvedModel } from "./LocalModelClient.js";
 import { ModelClientError, ModelClientErrorCode } from "./errors.js";
 
+/**
+ * A configuration sentinel, not a provider model ID. It deliberately selects
+ * only a model the server already reports as loaded, so a default run cannot
+ * cause LM Studio to try loading an arbitrary fallback model.
+ */
+export const AUTO_SELECT_LOADED_MODEL = "auto";
+
 function normalizedModelName(value: string): string {
   return value
     .normalize("NFKC")
@@ -52,6 +59,37 @@ function ambiguous(requested: string, keys: readonly string[]): never {
   );
 }
 
+function resolveSingleLoadedModel(
+  requested: string,
+  groups: ReadonlyMap<string, readonly AvailableModel[]>,
+): ResolvedModel {
+  const loadedGroups = [...groups.values()].filter((variants) =>
+    variants.some((model) => model.loaded === true),
+  );
+  if (loadedGroups.length === 1) {
+    const variants = loadedGroups[0] ?? [];
+    return resolved(
+      requested,
+      variants,
+      "exact-key",
+      variants.find((model) => model.loaded === true),
+    );
+  }
+  if (loadedGroups.length === 0) {
+    throw new ModelClientError(
+      ModelClientErrorCode.modelMissing,
+      "No loaded language model is available in LM Studio. Load one model, or pass --model with a visible model key.",
+    );
+  }
+  throw new ModelClientError(
+    ModelClientErrorCode.modelAmbiguous,
+    `Multiple loaded language models are available: ${loadedGroups
+      .map((variants) => variants[0]?.logicalKey)
+      .filter((key): key is string => key !== undefined)
+      .join(", ")}. Pass --model with the model you intend to use.`,
+  );
+}
+
 export class LMStudioModelResolver {
   public resolve(requestedModel: string, models: readonly AvailableModel[]): ResolvedModel {
     const requested = requestedModel.trim();
@@ -67,6 +105,10 @@ export class LMStudioModelResolver {
         ModelClientErrorCode.modelMissing,
         "LM Studio returned no visible language models.",
       );
+    }
+
+    if (requested.toLocaleLowerCase("en-US") === AUTO_SELECT_LOADED_MODEL) {
+      return resolveSingleLoadedModel(requested, groups);
     }
 
     const exactKeyVariants = groups.get(requested);

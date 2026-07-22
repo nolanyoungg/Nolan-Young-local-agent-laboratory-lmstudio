@@ -3,7 +3,12 @@ import { z } from "zod";
 import { ModelIdentifierSchema } from "./models.js";
 
 export const DEFAULT_LM_STUDIO_BASE_URL = "http://127.0.0.1:1234";
-export const DEFAULT_LM_STUDIO_MODEL = "qwen/qwen2.5-coder-14b";
+/**
+ * Resolve exactly one model already loaded in LM Studio when the operator has
+ * not pinned a model identifier. Consumers must never send this sentinel to
+ * the provider API as a model ID.
+ */
+export const DEFAULT_LM_STUDIO_MODEL = "auto";
 export const DEFAULT_MODEL_CONNECTION_TIMEOUT_MS = 15_000;
 export const DEFAULT_MODEL_RESOLUTION_TIMEOUT_MS = 60_000;
 export const DEFAULT_MODEL_LOAD_TIMEOUT_MS = 300_000;
