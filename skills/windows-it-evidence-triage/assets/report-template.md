@@ -8,14 +8,14 @@
 ## Evidence
 
 | Item | Evidence | Status |
-| --- | --- | --- |
-| | | |
+| ---- | -------- | ------ |
+|      |          |        |
 
 ## Findings
 
 | Severity | Finding | Action | Verification |
-| --- | --- | --- | --- |
-| | | | |
+| -------- | ------- | ------ | ------------ |
+|          |         |        |              |
 
 ## Limitations
 
