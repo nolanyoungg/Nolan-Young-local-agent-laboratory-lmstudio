@@ -63,3 +63,10 @@ export function lmStudioEndpointUrl(baseUrl: string, path: string): URL {
   const endpoint = validateLMStudioEndpoint(baseUrl);
   return new URL(path.replace(/^\/v1\/?/u, ""), `${endpoint.httpBaseUrl}/`);
 }
+
+/** Builds a URL for LM Studio's native REST API without changing the configured host. */
+export function lmStudioNativeEndpointUrl(baseUrl: string, path: string): URL {
+  const endpoint = validateLMStudioEndpoint(baseUrl);
+  const origin = new URL(endpoint.httpBaseUrl).origin;
+  return new URL(path.replace(/^\/+/u, ""), `${origin}/`);
+}

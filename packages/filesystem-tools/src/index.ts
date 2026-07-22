@@ -4,6 +4,7 @@ export * from "./DryRunOverlay.js";
 export * from "./ListFilesTool.js";
 export * from "./ReadFileMetadataTool.js";
 export * from "./ReadFileTool.js";
+export * from "./RunValidationTool.js";
 export * from "./SearchTextTool.js";
 export * from "./ToolFactory.js";
 export * from "./WriteFileTool.js";

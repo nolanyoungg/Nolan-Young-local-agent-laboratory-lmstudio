@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   MAX_FILE_BYTES,
   ReadFileTool,
+  RunValidationTool,
   ToolFactory,
   type GuardedWorkspacePath,
   type WorkspaceGuardLike,
@@ -176,6 +177,42 @@ describe("filesystem tools", () => {
       fromDryRunOverlay: true,
     });
     await expect(access(join(workspace, "virtual.txt"))).rejects.toBeDefined();
+  });
+
+  it("limits validation to approved PHP and declared npm scripts", async () => {
+    const productionGuard = await WorkspaceGuard.create(workspace);
+    const preview = new RunValidationTool(
+      { workspaceGuard: productionGuard, dryRun: true },
+      workspace,
+    );
+    await expect(preview.execute({ kind: "php_lint", paths: ["a.txt"] })).rejects.toMatchObject({
+      code: "VALIDATION_DENIED",
+    });
+    await expect(preview.execute({ kind: "npm_script", script: "build" })).rejects.toMatchObject({
+      code: "VALIDATION_DENIED",
+    });
+    await writeFile(
+      join(workspace, "package.json"),
+      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
+      "utf8",
+    );
+    const calls: string[] = [];
+    const apply = new RunValidationTool(
+      { workspaceGuard: productionGuard, dryRun: false },
+      workspace,
+      async (command, args, cwd) => {
+        calls.push(`${command} ${args.join(" ")} ${cwd}`);
+        return { exitCode: 0, output: "ok" };
+      },
+    );
+    await expect(apply.execute({ kind: "npm_script", script: "build" })).resolves.toMatchObject({
+      kind: "npm_script",
+      status: "passed",
+    });
+    expect(calls).toHaveLength(1);
+    await expect(apply.execute({ kind: "npm_script", script: "test" })).rejects.toMatchObject({
+      code: "VALIDATION_DENIED",
+    });
   });
 });
 

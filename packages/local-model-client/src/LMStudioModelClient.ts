@@ -20,7 +20,7 @@ import {
   type RestCompletionResult,
 } from "./LMStudioRestHealthClient.js";
 import {
-  appendStructuredRepairInstruction,
+  parseTextCompletion,
   parseStructuredCompletion,
   schemaForRest,
   type RawStructuredCompletion,
@@ -33,6 +33,8 @@ export interface LMStudioModelClientDependencies {
 interface RawProviderResult extends RawStructuredCompletion {
   readonly model: string;
   readonly stopReason?: string;
+  readonly promptTokens?: number;
+  readonly completionTokens?: number;
 }
 
 const INCOMPLETE_STOP_REASONS = new Set([
@@ -161,58 +163,73 @@ export class LMStudioModelClient implements LocalModelClient {
     const temperature = parsedRequest.temperature ?? this.#config.temperature;
     const maxTokens = parsedRequest.maxTokens ?? this.#config.maxTokens;
     const started = performance.now();
-    let messages = parsedRequest.messages;
-    let totalAttempts = 0;
-
-    for (let repairAttempt = 0; repairAttempt <= this.#config.maxRetries; repairAttempt += 1) {
-      const attempted = await retryModelOperation(
-        this.#config.maxRetries,
-        this.#config.retryDelayMs,
-        request.signal,
-        async () => {
-          const result = await this.#rawComplete(
-            providerModel,
-            messages,
-            outputSchema,
-            parsedRequest.structuredOutput ?? true,
-            temperature,
-            maxTokens,
-            request.signal,
-          );
-          assertCompleteGeneration(result);
-          return result;
+    const structuredOutput = parsedRequest.structuredOutput ?? true;
+    const attempted = await retryModelOperation(
+      this.#config.maxRetries,
+      this.#config.retryDelayMs,
+      request.signal,
+      async () => {
+        const result = await this.#rawComplete(
+          providerModel,
+          parsedRequest.messages,
+          outputSchema,
+          structuredOutput,
+          temperature,
+          maxTokens,
+          request.signal,
+        );
+        assertCompleteGeneration(result);
+        return result;
+      },
+    );
+    try {
+      const structured = structuredOutput
+        ? parseStructuredCompletion(attempted.value, outputSchema)
+        : parseTextCompletion(attempted.value, outputSchema);
+      return {
+        value: structured.value,
+        content: structured.content,
+        model: attempted.value.model,
+        transport: this.transport,
+        attempts: attempted.attempts,
+        durationMs: Math.round(performance.now() - started),
+        ...(attempted.value.stopReason === undefined
+          ? {}
+          : { stopReason: attempted.value.stopReason }),
+        ...(attempted.value.promptTokens === undefined
+          ? {}
+          : { promptTokens: attempted.value.promptTokens }),
+        ...(attempted.value.completionTokens === undefined
+          ? {}
+          : { completionTokens: attempted.value.completionTokens }),
+      };
+    } catch (error) {
+      if (
+        !(error instanceof ModelClientError) ||
+        error.code !== ModelClientErrorCode.malformedResponse
+      )
+        throw error;
+      throw new ModelClientError(
+        ModelClientErrorCode.malformedResponse,
+        `LM Studio returned malformed structured output (${Buffer.byteLength(attempted.value.content, "utf8")} bytes).`,
+        {
+          cause: error,
+          details: {
+            serverModel: attempted.value.model,
+            malformedOutputBytes: Buffer.byteLength(attempted.value.content, "utf8"),
+            ...(attempted.value.promptTokens === undefined
+              ? {}
+              : { promptTokens: attempted.value.promptTokens }),
+            ...(attempted.value.completionTokens === undefined
+              ? {}
+              : { completionTokens: attempted.value.completionTokens }),
+            ...(attempted.value.stopReason === undefined
+              ? {}
+              : { finishReason: attempted.value.stopReason }),
+          },
         },
       );
-      totalAttempts += attempted.attempts;
-      try {
-        const structured = parseStructuredCompletion(attempted.value, outputSchema);
-        return {
-          value: structured.value,
-          content: structured.content,
-          model: attempted.value.model,
-          transport: this.transport,
-          attempts: totalAttempts,
-          durationMs: Math.round(performance.now() - started),
-          ...(attempted.value.stopReason === undefined
-            ? {}
-            : { stopReason: attempted.value.stopReason }),
-        };
-      } catch (error) {
-        if (
-          !(error instanceof ModelClientError) ||
-          error.code !== ModelClientErrorCode.malformedResponse ||
-          repairAttempt >= this.#config.maxRetries
-        ) {
-          throw error;
-        }
-        messages = [...appendStructuredRepairInstruction(parsedRequest.messages, error)];
-      }
     }
-
-    throw new ModelClientError(
-      ModelClientErrorCode.malformedResponse,
-      "LM Studio exhausted JSON response repair attempts.",
-    );
   }
 
   async #rawComplete<T>(
@@ -230,7 +247,7 @@ export class LMStudioModelClient implements LocalModelClient {
         messages,
         temperature,
         maxTokens,
-        jsonSchema: schemaForRest(outputSchema),
+        ...(structuredOutput ? { jsonSchema: schemaForRest(outputSchema) } : {}),
         ...(signal === undefined ? {} : { signal }),
       });
       return result;

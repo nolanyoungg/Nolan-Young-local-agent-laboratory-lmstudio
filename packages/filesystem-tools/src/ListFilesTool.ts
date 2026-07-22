@@ -9,7 +9,7 @@ export const ListFilesInputSchema = z
   .object({
     path: z.string().min(1).default("."),
     recursive: z.boolean().default(false),
-    maxResults: z.number().int().positive().max(2_000).default(2_000),
+    maxResults: z.number().int().positive().max(200).default(100),
   })
   .strict();
 
@@ -42,7 +42,7 @@ export class ListFilesTool {
       this.#guard,
       parsed.path,
       parsed.recursive,
-      Math.min(parsed.maxResults + 1, 2_001),
+      Math.min(parsed.maxResults + 1, 201),
     );
     const base = await this.#guard.resolveForRead(parsed.path);
     const byPath = new Map<string, ListedFile>();

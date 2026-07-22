@@ -17,6 +17,14 @@ describe("tracing", () => {
     ).toEqual({ apiToken: "[REDACTED]", nested: { authorization: "[REDACTED]" } });
   });
 
+  it("keeps numeric completion usage while redacting credential tokens", () => {
+    expect(redact({ promptTokens: 42, completionTokens: 7, apiToken: "lm_secretvalue" })).toEqual({
+      promptTokens: 42,
+      completionTokens: 7,
+      apiToken: "[REDACTED]",
+    });
+  });
+
   it("removes embedded canonical paths from sanitized errors", () => {
     const error = Object.assign(
       new Error("Unable to read C:\\Users\\operator\\secret-project\\file.ts"),

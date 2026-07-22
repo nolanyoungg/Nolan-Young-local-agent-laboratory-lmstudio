@@ -23,6 +23,8 @@
     "clean": "tsx scripts/clean-generated-data.ts",
     "agent": "tsx scripts/run-agent.ts",
     "blog-writer": "tsx scripts/run-wordpress-blog-writer.ts",
+    "blog-tracker:init": "tsx scripts/create-wordpress-blog-tracker.ts",
+    "write-agent": "tsx scripts/run-write-agent.ts",
     "agent:list": "tsx scripts/agent-list.ts",
     "check:lmstudio": "tsx scripts/check-lmstudio.ts",
     "verify:workspaces": "tsx scripts/verify-workspaces.ts",

@@ -39,6 +39,7 @@ export function redactSensitiveText(message: string, secrets: readonly string[] 
 
 export class ModelClientError extends Error {
   public readonly code: ModelClientErrorCodeValue;
+  public readonly details: Readonly<Record<string, unknown>>;
   public readonly retryable: boolean;
 
   public constructor(
@@ -47,12 +48,14 @@ export class ModelClientError extends Error {
     options: {
       readonly retryable?: boolean;
       readonly cause?: unknown;
+      readonly details?: Readonly<Record<string, unknown>>;
       readonly secrets?: readonly string[];
     } = {},
   ) {
     super(redactSensitiveText(message, options.secrets), { cause: options.cause });
     this.name = "ModelClientError";
     this.code = code;
+    this.details = options.details ?? {};
     this.retryable = options.retryable ?? false;
   }
 
@@ -73,6 +76,7 @@ export function toModelClientError(
     }
     return new ModelClientError(error.code, error.message, {
       retryable: error.retryable,
+      details: error.details,
       secrets: options.secrets,
     });
   }

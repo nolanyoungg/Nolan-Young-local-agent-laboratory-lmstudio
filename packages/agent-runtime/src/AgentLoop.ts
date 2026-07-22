@@ -12,9 +12,9 @@ import {
 } from "./StructuredResponseParser.js";
 import { ToolPermissionGuard } from "./ToolPermissionGuard.js";
 import type { ToolRegistry } from "./ToolRegistry.js";
+import { ModelClientError } from "@local-agent-lab/local-model-client";
 import { AgentRuntimeError } from "./errors.js";
 
-const MAX_MALFORMED_RESPONSE_REPAIRS = 4;
 const MAX_PATCH_RECOVERY_FAILURES = 2;
 
 function toolCallFingerprint(
@@ -62,6 +62,7 @@ export interface RuntimeModelResponse<T> {
   readonly parsed: T;
   readonly content: string;
   readonly model?: string;
+  readonly diagnostics?: Readonly<Record<string, unknown>>;
 }
 
 export interface RuntimeModelClient {
@@ -109,6 +110,7 @@ export interface AgentLoopResult<TFinal extends Readonly<Record<string, unknown>
   readonly steps: number;
   readonly toolCalls: number;
   readonly replayedToolCalls: number;
+  readonly lastModelDiagnostics?: Readonly<Record<string, unknown>>;
 }
 
 export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
@@ -140,7 +142,7 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
     this.conversation.append({
       role: "system",
       critical: true,
-      content: `RESPONSE PROTOCOL: Return exactly one JSON envelope and no prose or Markdown. Every field is required: {"kind":"tool_call|complete","callId":"id-or-empty","tool":"tool-or-empty","input":"JSON string","output":"JSON string"}. Both input and output must always be valid non-empty JSON strings. For tool_call, set callId/tool and serialize the tool input in input; set output to "{}". For complete, set callId/tool to ""; set input to "{}" and serialize the final review object in output. All tool paths must be workspace-relative POSIX paths such as "theme.json" or "patterns/example.php"; never use an absolute, drive-letter, or workspace-root path. Use only these tools: ${options.allowedTools.join(", ")}. TOOL INPUT SCHEMAS: ${JSON.stringify(toolSchemas)}. FINAL RESULT JSON SCHEMA: ${JSON.stringify(finalResultSchema)}`,
+      content: `RESPONSE PROTOCOL: Return exactly one direct JSON object and no prose or Markdown. For a tool call, return {"kind":"tool_call","callId":"id","tool":"allowed_tool","input":{...}}. For completion, return the final result object with "kind":"complete". Do not encode input or output as JSON strings. All tool paths must be workspace-relative POSIX paths such as "theme.json" or "patterns/example.php"; never use an absolute, drive-letter, or workspace-root path. Prefer small non-recursive listings and inspect only relevant directories. Use only these tools: ${options.allowedTools.join(", ")}. TOOL INPUT SCHEMAS: ${JSON.stringify(toolSchemas)}. FINAL RESULT JSON SCHEMA: ${JSON.stringify(finalResultSchema)}`,
     });
     this.conversation.append({ role: "user", content: options.task, critical: true });
   }
@@ -151,7 +153,7 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
     let consecutiveReplays = 0;
     let patchRecoveryFailures = 0;
     let patchRecoveryPath: string | undefined;
-    let malformedResponseRepairs = 0;
+    let lastModelDiagnostics: Readonly<Record<string, unknown>> | undefined;
     const modelCallFingerprints = new Map<string, string>();
     await this.options.trace?.record({
       type: "agent",
@@ -180,20 +182,42 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
         metadata: { requestId: request.requestId, messageCount: request.messages.length },
       });
 
-      const response = await this.retryPolicy.execute(
-        () => this.options.modelClient.complete<unknown>(request, this.parser.schema),
-        this.options.shouldRetryModelError ?? (() => true),
-        async ({ attempt, delayMs }) => {
-          await this.options.trace?.record({
-            type: "model_retry",
-            status: "scheduled",
-            runId: this.options.runId,
-            agentId: this.options.agentId,
-            step,
-            metadata: { attempt, delayMs },
-          });
-        },
-      );
+      let response: RuntimeModelResponse<unknown>;
+      try {
+        response = await this.retryPolicy.execute(
+          () => this.options.modelClient.complete<unknown>(request, this.parser.schema),
+          this.options.shouldRetryModelError ?? (() => true),
+          async ({ attempt, delayMs }) => {
+            await this.options.trace?.record({
+              type: "model_retry",
+              status: "scheduled",
+              runId: this.options.runId,
+              agentId: this.options.agentId,
+              step,
+              metadata: { attempt, delayMs },
+            });
+          },
+        );
+      } catch (error) {
+        await this.options.trace?.record({
+          type: "model_protocol_error",
+          status: "failed",
+          runId: this.options.runId,
+          agentId: this.options.agentId,
+          step,
+          metadata: {
+            errorName: error instanceof Error ? error.name : "UnknownError",
+            ...(error instanceof ModelClientError ? error.details : {}),
+          },
+        });
+        throw new AgentRuntimeError(
+          "MODEL_PROTOCOL_ERROR",
+          "The local model returned invalid structured output; no repair retry was attempted.",
+          error instanceof ModelClientError ? error.details : {},
+          { cause: error },
+        );
+      }
+      lastModelDiagnostics = response.diagnostics;
       let turn: AgentTurn<TFinal>;
       try {
         turn = this.parser.parse(response.parsed, {
@@ -201,91 +225,26 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
           harmonyCallId: `${this.options.agentId}-${step}`,
         });
       } catch (error) {
-        if (
-          error instanceof AgentRuntimeError &&
-          error.code === "INVALID_MODEL_RESPONSE" &&
-          malformedResponseRepairs < MAX_MALFORMED_RESPONSE_REPAIRS
-        ) {
-          malformedResponseRepairs += 1;
-          const issues = Array.isArray(error.details["issues"])
-            ? error.details["issues"].slice(0, 8).flatMap((issue) => {
-                if (typeof issue !== "object" || issue === null || Array.isArray(issue)) return [];
-                const path = (issue as Record<string, unknown>)["path"];
-                return typeof path === "string" && path.length > 0 ? [path.slice(0, 128)] : [];
-              })
-            : [];
-          const parsedRecord =
-            typeof response.parsed === "object" &&
-            response.parsed !== null &&
-            !Array.isArray(response.parsed)
-              ? (response.parsed as Readonly<Record<string, unknown>>)
-              : undefined;
-          const envelopeInput = parsedRecord?.["input"];
-          const envelopeOutput = parsedRecord?.["output"];
-          const harmonyRecipient =
-            /<\|channel\|>(?:analysis|commentary)\s+to=\s*([^\s<]{1,128})/u.exec(
-              response.content,
-            )?.[1];
-          await this.options.trace?.record({
-            type: "model_response_repair",
-            status: "scheduled",
-            runId: this.options.runId,
-            agentId: this.options.agentId,
-            step,
-            metadata: {
-              attempt: malformedResponseRepairs,
-              errorCode: error.code,
-              issuePaths: issues,
-              issueCount: Array.isArray(error.details["issues"])
-                ? error.details["issues"].length
-                : 0,
-              responseContentBytes: Buffer.byteLength(response.content, "utf8"),
-              responseContentSha256: createHash("sha256").update(response.content).digest("hex"),
-              responseParsedType: Array.isArray(response.parsed)
-                ? "array"
-                : response.parsed === null
-                  ? "null"
-                  : typeof response.parsed,
-              responseParsedKeys:
-                parsedRecord === undefined ? [] : Object.keys(parsedRecord).sort().slice(0, 16),
-              responseParsedValueTypes:
-                parsedRecord === undefined
-                  ? []
-                  : Object.entries(parsedRecord)
-                      .sort(([left], [right]) => left.localeCompare(right))
-                      .slice(0, 16)
-                      .map(
-                        ([key, value]) => `${key}:${Array.isArray(value) ? "array" : typeof value}`,
-                      ),
-              ...(typeof parsedRecord?.["kind"] === "string"
-                ? { envelopeKind: parsedRecord["kind"] }
-                : {}),
-              ...(typeof parsedRecord?.["tool"] === "string"
-                ? { envelopeTool: parsedRecord["tool"] }
-                : {}),
-              ...(typeof envelopeInput === "string"
-                ? { envelopeInputBytes: Buffer.byteLength(envelopeInput, "utf8") }
-                : {}),
-              ...(typeof envelopeOutput === "string"
-                ? { envelopeOutputBytes: Buffer.byteLength(envelopeOutput, "utf8") }
-                : {}),
-              matchingAllowedToolSchemas: this.parser.matchingToolNames(response.parsed),
-              harmonyToolMarker: /<\|channel\|>(?:analysis|commentary)\s+to=/u.test(
-                response.content,
-              ),
-              ...(harmonyRecipient === undefined ? {} : { harmonyRecipient }),
-            },
-          });
-          this.conversation.append({
-            role: "user",
-            critical: true,
-            content:
-              "Your previous response was rejected before any tool ran. Return exactly one corrected direct JSON tool-call or completion object with every required field. Use only these tool names: " +
-              `${this.options.allowedTools.join(", ")}. Do not emit Harmony control tokens, a recipient such as to=tool_call, or container.exec. Do not repeat a prior callId.`,
-          });
-          continue;
-        }
-        throw error;
+        const details = {
+          ...(response.diagnostics ?? {}),
+          errorCode: error instanceof AgentRuntimeError ? error.code : "INVALID_MODEL_RESPONSE",
+          malformedOutputBytes: Buffer.byteLength(response.content, "utf8"),
+          ...(error instanceof AgentRuntimeError ? error.details : {}),
+        };
+        await this.options.trace?.record({
+          type: "model_protocol_error",
+          status: "failed",
+          runId: this.options.runId,
+          agentId: this.options.agentId,
+          step,
+          metadata: details,
+        });
+        throw new AgentRuntimeError(
+          "MODEL_PROTOCOL_ERROR",
+          "The local model returned invalid structured output; no repair retry was attempted.",
+          details,
+          { cause: error },
+        );
       }
       if (turn.kind === "tool_call") {
         const fingerprint = toolCallFingerprint(turn);
@@ -309,7 +268,7 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
         runId: this.options.runId,
         agentId: this.options.agentId,
         step,
-        metadata: { requestId: request.requestId, turnKind: turn.kind },
+        metadata: { requestId: request.requestId, turnKind: turn.kind, ...response.diagnostics },
       });
 
       if (turn.kind === "complete") {
@@ -337,7 +296,13 @@ export class AgentLoop<TFinal extends Readonly<Record<string, unknown>>> {
           agentId: this.options.agentId,
           metadata: { steps: step, toolCalls, replayedToolCalls },
         });
-        return { final: turn, steps: step, toolCalls, replayedToolCalls };
+        return {
+          final: turn,
+          steps: step,
+          toolCalls,
+          replayedToolCalls,
+          ...(lastModelDiagnostics === undefined ? {} : { lastModelDiagnostics }),
+        };
       }
 
       if (

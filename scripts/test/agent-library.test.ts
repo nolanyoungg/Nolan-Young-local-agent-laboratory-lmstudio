@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { resolve } from "node:path";
 import { validateLMStudioEndpoint } from "@local-agent-lab/local-model-client";
-import { listAgents, loadAgent } from "../agent-library.js";
+import { assertAgentExecutionMode, listAgents, loadAgent } from "../agent-library.js";
 
 const root = resolve(import.meta.dirname, "..", "..");
 
 describe("agent library", () => {
-  it("loads the read-only agents", async () => {
+  it("loads read-only and write-capable agents into their separate modes", async () => {
     expect(await listAgents(root)).toEqual([
       "agent-definition-auditor",
       "github-repo-review",
+      "wordpress-homepage-template-composer-agent",
       "wordpress-theme-file-reviewer-agent",
       "wordpress-theme-verification-agent",
     ]);
@@ -23,6 +24,12 @@ describe("agent library", () => {
       "read_file_metadata",
       "search_text",
     ]);
+    const writer = await loadAgent(root, "wordpress-homepage-template-composer-agent");
+    const reader = await loadAgent(root, "github-repo-review");
+    expect(writer.executionMode).toBe("write");
+    expect(writer.allowedTools).toContain("create_file");
+    expect(() => assertAgentExecutionMode(writer, "read-only")).toThrow(/write-agent/);
+    expect(() => assertAgentExecutionMode(reader, "write")).toThrow(/npm run agent/);
   });
 
   it("accepts loopback HTTP and remote HTTPS without URL credentials", () => {

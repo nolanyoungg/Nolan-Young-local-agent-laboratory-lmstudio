@@ -38,6 +38,8 @@ export interface ModelCompletionResponse<T> {
   readonly attempts: number;
   readonly durationMs: number;
   readonly stopReason?: string;
+  readonly promptTokens?: number;
+  readonly completionTokens?: number;
 }
 
 export function ModelCompletionResponseSchema<T>(outputSchema: ZodType<T>) {
@@ -50,6 +52,8 @@ export function ModelCompletionResponseSchema<T>(outputSchema: ZodType<T>) {
       attempts: z.number().int().positive(),
       durationMs: z.number().nonnegative(),
       stopReason: z.string().optional(),
+      promptTokens: z.number().int().nonnegative().optional(),
+      completionTokens: z.number().int().nonnegative().optional(),
     })
     .strict();
 }

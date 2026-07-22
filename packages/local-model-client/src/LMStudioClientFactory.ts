@@ -6,10 +6,11 @@ import {
   LMStudioModelClient,
   type LMStudioModelClientDependencies,
 } from "./LMStudioModelClient.js";
+import { AUTO_SELECT_LOADED_MODEL } from "./LMStudioModelResolver.js";
 import { MockModelClient, type MockModelClientOptions } from "./MockModelClient.js";
 
 const DEFAULTS = {
-  requestedModel: "qwen/qwen2.5-coder-14b",
+  requestedModel: AUTO_SELECT_LOADED_MODEL,
   contextLength: 32_768,
   temperature: 0.1,
   maxTokens: 4_096,

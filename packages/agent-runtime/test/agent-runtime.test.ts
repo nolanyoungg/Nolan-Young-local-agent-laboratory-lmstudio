@@ -686,37 +686,10 @@ describe("agent runtime", () => {
     });
   });
 
-  it("repairs a malformed JSON response without executing a tool", async () => {
-    const tools = new ToolRegistry();
-    const client = new ScriptedClient([
-      { kind: "complete" },
-      { kind: "complete", summary: "recovered", evidence: [], findings: [] },
-    ]);
-    const result = await baseLoop(client, tools).run();
-    expect(result.toolCalls).toBe(0);
-    expect(result.final["summary"]).toBe("recovered");
-  });
-
-  it("allows bounded additional repairs for GPT-OSS protocol drift", async () => {
-    const tools = new ToolRegistry();
-    const client = new ScriptedClient([
-      { kind: "tool_call" },
-      { kind: "tool_call" },
-      { kind: "tool_call" },
-      { kind: "complete", summary: "recovered", evidence: [], findings: [] },
-    ]);
-    const result = await baseLoop(client, tools).run();
-    expect(result.toolCalls).toBe(0);
-    expect(result.final["summary"]).toBe("recovered");
-  });
-
-  it("records bounded non-content diagnostics for rejected model responses", async () => {
+  it("fails once with protocol diagnostics for malformed model output", async () => {
     const tools = new ToolRegistry();
     const trace = new TraceCollector();
-    const client = new ScriptedClient([
-      { unexpected: "shape" },
-      { kind: "complete", summary: "recovered", evidence: [], findings: [] },
-    ]);
+    const client = new ScriptedClient([{ unexpected: "shape" }]);
     const loop = new AgentLoop({
       runId: "diagnostics",
       agentId: "planner",
@@ -734,16 +707,14 @@ describe("agent runtime", () => {
       tools,
       trace,
     });
-    await loop.run();
-    const repair = trace.events.find((event) => event["type"] === "model_response_repair");
-    expect(repair?.["metadata"]).toMatchObject({
-      issueCount: 1,
-      responseParsedType: "object",
-      responseParsedKeys: ["unexpected"],
-      responseParsedValueTypes: ["unexpected:string"],
-      harmonyToolMarker: false,
+    await expect(loop.run()).rejects.toMatchObject({ code: "MODEL_PROTOCOL_ERROR" });
+    expect(client.requests).toHaveLength(1);
+    const diagnostic = trace.events.find((event) => event["type"] === "model_protocol_error");
+    expect(diagnostic?.["metadata"]).toMatchObject({
+      errorCode: "INVALID_MODEL_RESPONSE",
+      malformedOutputBytes: expect.any(Number),
     });
-    expect(repair?.["metadata"]).not.toHaveProperty("responseContent");
+    expect(trace.events.some((event) => event["type"] === "model_response_repair")).toBe(false);
   });
 
   it("enforces the step limit", () => {

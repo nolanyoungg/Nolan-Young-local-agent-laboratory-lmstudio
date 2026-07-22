@@ -8,7 +8,8 @@ export type FilesystemToolErrorCode =
   | "IO_ERROR"
   | "NOT_A_DIRECTORY"
   | "NOT_A_FILE"
-  | "PATCH_FAILED";
+  | "PATCH_FAILED"
+  | "VALIDATION_DENIED";
 
 export class FilesystemToolError extends Error {
   public readonly code: FilesystemToolErrorCode;

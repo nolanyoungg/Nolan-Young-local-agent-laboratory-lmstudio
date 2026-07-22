@@ -1,5 +1,6 @@
 const REDACTED = "[REDACTED]";
 const SECRET_KEY = /(?:token|authorization|password|passwd|secret|api[_-]?key|credential|cookie)/i;
+const SAFE_USAGE_METRIC_KEYS = new Set(["promptTokens", "completionTokens", "totalTokens"]);
 const AUTHORIZATION_VALUE = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const LM_TOKEN_VALUE = /\blm_[A-Za-z0-9_-]{8,}\b/g;
 const PRIVATE_KEY = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
@@ -26,7 +27,12 @@ export function redact(value: unknown, seen = new WeakSet<object>()): unknown {
 
   const output: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
-    output[key] = SECRET_KEY.test(key) ? REDACTED : redact(item, seen);
+    output[key] =
+      SAFE_USAGE_METRIC_KEYS.has(key) && typeof item === "number"
+        ? item
+        : SECRET_KEY.test(key)
+          ? REDACTED
+          : redact(item, seen);
   }
   return output;
 }

@@ -29,7 +29,7 @@ export const ListFilesToolCallSchema = z
       .object({
         path: RelativePathInputSchema.default("."),
         pattern: z.string().min(1).max(1_024).optional(),
-        maxResults: z.number().int().positive().max(10_000).default(2_000),
+        maxResults: z.number().int().positive().max(200).default(100),
       })
       .strict(),
   })
