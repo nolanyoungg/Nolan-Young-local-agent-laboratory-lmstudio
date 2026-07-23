@@ -1,3 +1,5 @@
+export * from "./AgentManifest.js";
+export * from "./FinalArtifact.js";
 export * from "./AgentLoop.js";
 export * from "./AgentRunner.js";
 export * from "./ContextBudget.js";

@@ -2,7 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 export interface AgentManifest {
-  executionMode: "read-only" | "write";
+  executionMode: "read-only" | "write" | "external-write";
   id: string;
   defaultSkills: string[];
   allowedTools: string[];
@@ -38,21 +38,23 @@ export async function loadAgent(root: string, id: string): Promise<AgentManifest
     .split(",")
     .map((value) => value.trim());
   const executionMode = optionalField(instructions, "executionMode") ?? "read-only";
-  if (executionMode !== "read-only" && executionMode !== "write")
-    throw new Error("executionMode must be read-only or write.");
+  if (executionMode !== "read-only" && executionMode !== "write" && executionMode !== "external-write")
+    throw new Error("executionMode must be read-only, write, or external-write.");
   const allowedByMode =
     executionMode === "read-only"
       ? ["list_files", "read_file", "read_file_metadata", "search_text"]
-      : [
-          "list_files",
-          "read_file",
-          "read_file_metadata",
-          "search_text",
-          "create_file",
-          "write_file",
-          "apply_patch",
-          "run_validation",
-        ];
+      : executionMode === "write"
+        ? [
+            "list_files",
+            "read_file",
+            "read_file_metadata",
+            "search_text",
+            "create_file",
+            "write_file",
+            "apply_patch",
+            "run_validation",
+          ]
+        : ["read_file", "github_issues"];
   if (allowedTools.some((tool) => !allowedByMode.includes(tool)))
     throw new Error(`Agent tools are incompatible with ${executionMode} mode.`);
   return {

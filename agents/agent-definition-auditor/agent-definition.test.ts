@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolve } from "node:path";
 import { validateLMStudioEndpoint } from "@local-agent-lab/local-model-client";
-import { assertAgentExecutionMode, listAgents, loadAgent } from "./agent-library.js";
+import { assertAgentExecutionMode, listAgents, loadAgent } from "@local-agent-lab/agent-runtime";
 
 const root = resolve(import.meta.dirname, "..", "..");
 
@@ -9,6 +9,7 @@ describe("agent library", () => {
   it("loads read-only and write-capable agents into their separate modes", async () => {
     expect(await listAgents(root)).toEqual([
       "agent-definition-auditor",
+      "github-issue-agent",
       "github-repo-review",
       "wordpress-blog-writer-agent",
       "wordpress-homepage-template-composer-agent",
@@ -27,8 +28,11 @@ describe("agent library", () => {
     ]);
     const writer = await loadAgent(root, "wordpress-homepage-template-composer-agent");
     const reader = await loadAgent(root, "github-repo-review");
+    const publisher = await loadAgent(root, "github-issue-agent");
     expect(writer.executionMode).toBe("write");
     expect(writer.allowedTools).toContain("create_file");
+    expect(publisher.executionMode).toBe("external-write");
+    expect(publisher.allowedTools).toEqual(["read_file", "github_issues"]);
     expect(() => assertAgentExecutionMode(writer, "read-only")).toThrow(/matching agent command/);
     expect(() => assertAgentExecutionMode(reader, "write")).toThrow(/matching agent command/);
   });
