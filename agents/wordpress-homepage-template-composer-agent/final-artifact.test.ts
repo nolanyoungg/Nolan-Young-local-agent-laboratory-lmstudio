@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { publishFinalArtifact } from "./final-artifact.js";
+import { publishFinalArtifact } from "@local-agent-lab/agent-runtime";
 
 describe("final artifact publisher", () => {
   it("copies only the finished Markdown report into the producer dist directory", async () => {

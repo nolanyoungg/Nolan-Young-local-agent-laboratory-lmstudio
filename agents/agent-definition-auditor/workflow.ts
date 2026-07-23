@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { AgentRunner, ToolRegistry } from "@local-agent-lab/agent-runtime";
+import { AgentRunner, ToolRegistry, assertAgentExecutionMode, loadAgent, loadSkill, publishFinalArtifact } from "@local-agent-lab/agent-runtime";
 import {
   ToolFactory,
   ListFilesInputSchema,
@@ -13,8 +13,6 @@ import {
 import { createLMStudioModelClient } from "@local-agent-lab/local-model-client";
 import { WorkspaceGuard } from "@local-agent-lab/workspace-security";
 import { JsonlTraceWriter, ReportWriter } from "@local-agent-lab/tracing";
-import { assertAgentExecutionMode, loadAgent, loadSkill } from "./agent-library.js";
-import { publishFinalArtifact } from "./final-artifact.js";
 import { verifyWordPressTheme } from "../wordpress-theme-verification-agent/workflow.js";
 import {
   markdownThemeFileReview,

@@ -23,6 +23,7 @@
     "clean": "tsx scripts/clean-generated-data.ts",
     "agent-definition-auditor": "tsx agents/agent-definition-auditor/run.ts",
     "github-repo-review": "tsx agents/github-repo-review/run.ts",
+    "github-issue-agent": "tsx agents/github-issue-agent/run.ts",
     "wordpress-blog-writer-agent": "tsx agents/wordpress-blog-writer-agent/run.ts",
     "wordpress-homepage-template-composer-agent": "tsx agents/wordpress-homepage-template-composer-agent/run.ts",
     "wordpress-theme-file-reviewer-agent": "tsx agents/wordpress-theme-file-reviewer-agent/run.ts",

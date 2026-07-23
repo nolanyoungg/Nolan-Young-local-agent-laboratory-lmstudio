@@ -5,12 +5,14 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 for (const path of [
   "agents/github-repo-review/AGENT.md",
+  "agents/github-issue-agent/AGENT.md",
   "agents/wordpress-blog-writer-agent/AGENT.md",
   "agents/wordpress-theme-verification-agent/AGENT.md",
   "agents/wordpress-theme-file-reviewer-agent/AGENT.md",
   "agents/wordpress-homepage-template-composer-agent/AGENT.md",
   "skills/evidence-based-review/SKILL.md",
   "skills/repo-auditor/SKILL.md",
+  "skills/github-issue-publishing/SKILL.md",
   "skills/wordpress-theme-verification/SKILL.md",
   "skills/wordpress-blog-writing/SKILL.md",
   "skills/wordpress-theme-file-review/SKILL.md",
